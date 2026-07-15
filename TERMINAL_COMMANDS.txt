@@ -1,0 +1,236 @@
+================================================================================
+STEPHOTEC BACKEND - TERMINAL COMMANDS
+================================================================================
+
+IMPORTANT: Run these commands in order in your Django project directory
+Location: c:\stephotec_backend
+
+================================================================================
+STEP 1: NAVIGATE TO PROJECT DIRECTORY
+================================================================================
+
+cd c:\stephotec_backend
+
+
+================================================================================
+STEP 2: CREATE MIGRATIONS (if not already created)
+================================================================================
+
+python manage.py makemigrations accounts
+
+
+================================================================================
+STEP 3: APPLY ALL MIGRATIONS
+================================================================================
+
+python manage.py migrate accounts
+
+
+================================================================================
+STEP 4: VERIFY MIGRATIONS WERE APPLIED
+================================================================================
+
+python manage.py showmigrations accounts
+
+
+================================================================================
+STEP 5: RUN TESTS (Choose one)
+================================================================================
+
+Option A - Using pytest (recommended):
+pytest accounts/tests.py -v
+
+Option B - Using Django test runner:
+python manage.py test accounts
+
+Option C - Run specific test class:
+pytest accounts/tests.py::TestStudentCourseModel -v
+
+
+================================================================================
+STEP 6: START DEVELOPMENT SERVER
+================================================================================
+
+python manage.py runserver
+
+
+================================================================================
+STEP 7: ACCESS SWAGGER UI (in browser)
+================================================================================
+
+http://localhost:8000/api/schema/swagger-ui/
+
+
+================================================================================
+TROUBLESHOOTING COMMANDS
+================================================================================
+
+Check migration status:
+python manage.py showmigrations accounts
+
+Show migration plan (what will be applied):
+python manage.py migrate accounts --plan
+
+Rollback to previous migration (if needed):
+python manage.py migrate accounts 0007
+
+Reset all migrations (development only!):
+python manage.py migrate accounts zero
+
+Check database tables:
+python manage.py dbshell
+
+Run tests with coverage:
+pytest accounts/tests.py --cov=accounts --cov-report=html
+
+Run specific test:
+pytest accounts/tests.py::TestStudentCreationAPI::test_create_student_with_course -v
+
+
+================================================================================
+QUICK SETUP (Copy & Paste All At Once)
+================================================================================
+
+cd c:\stephotec_backend && python manage.py migrate accounts && python manage.py showmigrations accounts && pytest accounts/tests.py -v
+
+
+================================================================================
+PRODUCTION DEPLOYMENT COMMANDS
+================================================================================
+
+1. Collect static files:
+python manage.py collectstatic --noinput
+
+2. Run migrations:
+python manage.py migrate accounts
+
+3. Create superuser (if needed):
+python manage.py createsuperuser
+
+4. Start production server (with gunicorn):
+gunicorn config.wsgi:application --bind 0.0.0.0:8000
+
+
+================================================================================
+USEFUL DJANGO COMMANDS
+================================================================================
+
+Create superuser:
+python manage.py createsuperuser
+
+Access Django shell:
+python manage.py shell
+
+Access database shell:
+python manage.py dbshell
+
+Check for issues:
+python manage.py check
+
+Flush database (development only!):
+python manage.py flush
+
+Create empty migration:
+python manage.py makemigrations accounts --empty accounts --name migration_name
+
+
+================================================================================
+TESTING COMMANDS
+================================================================================
+
+Run all tests:
+pytest accounts/tests.py -v
+
+Run with verbose output:
+pytest accounts/tests.py -vv
+
+Run with print statements:
+pytest accounts/tests.py -v -s
+
+Run specific test class:
+pytest accounts/tests.py::TestStudentCourseModel -v
+
+Run specific test method:
+pytest accounts/tests.py::TestStudentCourseModel::test_create_student_course -v
+
+Run with coverage report:
+pytest accounts/tests.py --cov=accounts --cov-report=html
+
+Run tests and stop on first failure:
+pytest accounts/tests.py -x
+
+Run tests in parallel:
+pytest accounts/tests.py -n auto
+
+
+================================================================================
+API TESTING WITH CURL
+================================================================================
+
+1. Get login token:
+curl -X POST http://localhost:8000/api/v1/auth/login/ \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"password"}'
+
+2. Create student (replace TOKEN):
+curl -X POST http://localhost:8000/api/v1/admin/students/ \
+  -H "Authorization: Bearer TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"first_name":"John","last_name":"Doe","email":"john@test.com","course_id":1,"admission_year":2024,"is_primary":true}'
+
+3. List students:
+curl -X GET http://localhost:8000/api/v1/admin/students/ \
+  -H "Authorization: Bearer TOKEN"
+
+4. Get student details:
+curl -X GET http://localhost:8000/api/v1/admin/students/1/ \
+  -H "Authorization: Bearer TOKEN"
+
+5. List student's courses:
+curl -X GET http://localhost:8000/api/v1/admin/students/1/courses/ \
+  -H "Authorization: Bearer TOKEN"
+
+
+================================================================================
+ENVIRONMENT SETUP
+================================================================================
+
+Install dependencies:
+pip install -r requirements.txt
+
+Create .env file (if not exists):
+copy .env.example .env
+
+Update .env with your settings:
+- SECRET_KEY
+- DEBUG
+- ALLOWED_HOSTS
+- DATABASE_URL
+- CORS_ALLOWED_ORIGINS
+
+
+================================================================================
+NOTES
+================================================================================
+
+- All migrations are reversible
+- Tests cover all critical paths
+- Swagger UI provides interactive API documentation
+- JWT tokens expire after 20 days (configurable in settings)
+- All student deletions are soft deletes (data preserved)
+- Course deletion is protected if students are enrolled
+- Student IDs are auto-generated per course/year
+
+
+================================================================================
+SUPPORT
+================================================================================
+
+For issues:
+1. Check MIGRATION_GUIDE.md for detailed instructions
+2. Check BACKEND_COMPLETION_SUMMARY.md for overview
+3. Review test file for usage examples
+4. Check Swagger UI for endpoint documentation
+5. Review error messages in terminal output
+
+================================================================================

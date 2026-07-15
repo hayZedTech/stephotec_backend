@@ -1,0 +1,168 @@
+================================================================================
+RUN THESE COMMANDS NOW IN YOUR TERMINAL
+================================================================================
+
+Copy and paste these commands one by one in your terminal.
+Location: c:\stephotec_backend
+
+================================================================================
+COMMAND 1: Navigate to project
+================================================================================
+
+cd c:\stephotec_backend
+
+
+================================================================================
+COMMAND 2: Apply migrations
+================================================================================
+
+python manage.py migrate accounts
+
+
+================================================================================
+COMMAND 3: Verify migrations applied
+================================================================================
+
+python manage.py showmigrations accounts
+
+Expected output: All migrations should show [X] mark
+
+
+================================================================================
+COMMAND 4: Run tests
+================================================================================
+
+pytest accounts/tests.py -v
+
+Expected output: All 12 tests should PASS
+
+
+================================================================================
+COMMAND 5: Start development server
+================================================================================
+
+python manage.py runserver
+
+Expected output: Server running on http://localhost:8000
+
+
+================================================================================
+COMMAND 6: Open in browser (in new terminal/tab)
+================================================================================
+
+http://localhost:8000/api/schema/swagger-ui/
+
+This opens Swagger UI where you can test all endpoints
+
+
+================================================================================
+QUICK SETUP (All at once)
+================================================================================
+
+If you want to run everything at once, copy this:
+
+cd c:\stephotec_backend && python manage.py migrate accounts && python manage.py showmigrations accounts && pytest accounts/tests.py -v && python manage.py runserver
+
+
+================================================================================
+WHAT TO EXPECT
+================================================================================
+
+After running migrations:
+✅ No errors
+✅ All migrations applied
+✅ Database updated
+
+After running tests:
+✅ 12 tests pass
+✅ All test classes pass:
+   - TestStudentCourseModel
+   - TestStudentCreationAPI
+   - TestStudentCourseManagementAPI
+   - TestCourseDeleteProtection
+
+After starting server:
+✅ Server running on http://localhost:8000
+✅ No errors in terminal
+✅ Ready for API requests
+
+After opening Swagger UI:
+✅ All endpoints visible
+✅ Can test endpoints interactively
+✅ Can see request/response formats
+
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+If migrations fail:
+- Check if you're in the right directory: c:\stephotec_backend
+- Check if database is accessible
+- Run: python manage.py showmigrations accounts --plan
+
+If tests fail:
+- Check if migrations were applied
+- Run: python manage.py migrate accounts
+- Then run tests again
+
+If server won't start:
+- Check if port 8000 is already in use
+- Run: python manage.py runserver 8001 (use different port)
+- Check for syntax errors in code
+
+
+================================================================================
+NEXT STEPS AFTER SETUP
+================================================================================
+
+1. ✅ Migrations applied
+2. ✅ Tests passing
+3. ✅ Server running
+4. ✅ Swagger UI accessible
+
+Then:
+- Test endpoints in Swagger UI
+- Create test student with course
+- Add course to student
+- Update course status
+- Remove course from student
+- Verify everything works
+
+Then:
+- Start frontend development
+- Frontend will call these API endpoints
+- Use Swagger UI as reference
+
+
+================================================================================
+IMPORTANT NOTES
+================================================================================
+
+- Keep server running during development
+- Use Swagger UI to test endpoints
+- All endpoints require JWT token (except login)
+- Check terminal for any errors
+- Review test file for usage examples
+- Read MIGRATION_GUIDE.md for detailed info
+
+
+================================================================================
+SUPPORT
+================================================================================
+
+If you have issues:
+1. Check TERMINAL_COMMANDS.txt for more commands
+2. Check MIGRATION_GUIDE.md for detailed instructions
+3. Check PRE_FRONTEND_CHECKLIST.md for verification steps
+4. Check accounts/tests.py for usage examples
+5. Check Swagger UI for endpoint documentation
+
+
+================================================================================
+YOU'RE READY!
+================================================================================
+
+Once all commands run successfully, your backend is ready for frontend development.
+
+Good luck! 🚀

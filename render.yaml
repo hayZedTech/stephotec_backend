@@ -1,0 +1,24 @@
+services:
+  # The Backend ASGI Web Service
+  - type: web
+    name: stephotec-backend
+    runtime: python
+    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
+    startCommand: "daphne -b 0.0.0.0 -p $PORT config.asgi:application"
+    envVars:
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_HOSTS
+        value: "stephotec-backend.onrender.com" # Swap with your live render app domain later
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stephotec-db
+          property: connectionString
+      - key: USE_REDIS_LAYER
+        value: "False" # Set to True once an external Redis URL is provided
+
+databases:
+  - name: stephotec-db
+    plan: free
