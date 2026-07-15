@@ -36,6 +36,7 @@ class User(AbstractUser):
         GRADUATED = "GRADUATED", "Graduated"
         SUSPENDED = "SUSPENDED", "Suspended"
         WITHDRAWN = "WITHDRAWN", "Withdrawn"
+        INACTIVE = "INACTIVE", "Inactive"
     current_year = datetime.datetime.now().year
     ADMISSION_YEAR_CHOICES = [(y, y) for y in range(2020, current_year + 1)]
     email = models.EmailField()

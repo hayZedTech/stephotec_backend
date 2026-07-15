@@ -4,6 +4,8 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Course, StudentCourse
 from config.validators import validate_profile_picture
+import secrets
+import string
 
 User = get_user_model()
 
@@ -99,7 +101,7 @@ class AdminStudentCreationSerializer(serializers.Serializer):
         default=User.Status.ACTIVE,
         required=False,
     )
-    profile_picture_url = serializers.URLField(required=False, allow_blank=True)
+    profile_picture_url = serializers.CharField(required=False, allow_blank=True)
 
     def validate_email(self, value):
         existing = User.objects.filter(email__iexact=value)
@@ -111,13 +113,20 @@ class AdminStudentCreationSerializer(serializers.Serializer):
             )
         return value
     
+    def validate_date_of_birth(self, value):
+        if value == "" or value is None:
+            return None
+        return value
+    
     def create(self, validated_data):
         course = validated_data.pop("course_id")
         admission_year = validated_data.pop("admission_year")
         is_primary = validated_data.pop("is_primary", True)
+        validated_data.pop("profile_picture_url", None)
         
-        # Generate password based on course code
-        temporary_password = f"Welcome@Stephotec{course.code_prefix}"
+        # Generate random secure password
+        chars = string.ascii_letters + string.digits + "!@#$%^&*"
+        temporary_password = ''.join(secrets.choice(chars) for _ in range(16))
         
         user = User(
             first_name=validated_data["first_name"],
@@ -290,7 +299,7 @@ class StudentProfileActivationSerializer(serializers.ModelSerializer):
     profile_picture_url = serializers.URLField(required=False, allow_blank=True)
     class Meta:
         model = User
-        fields = ["new_password", "phone", "date_of_birth", "gender", "address", "profile_picture_url", "is_profile_complete"]
+        fields = ["new_password", "phone", "date_of_birth", "gender", "address", "state_of_origin", "profile_picture_url", "is_profile_complete"]
         read_only_fields = ["is_profile_complete"]
     def update(self, instance, validated_data):
         instance.phone = validated_data.get("phone", instance.phone)

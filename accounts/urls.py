@@ -9,6 +9,7 @@ from .views import (
     StudentProfileView,
     StudentProfilePageView,
     StudentProfileActivationView,
+    ChangePasswordView,
     FileUploadView,
 )
 
@@ -35,6 +36,7 @@ urlpatterns = [
     path('student/profile/', StudentProfileView.as_view(), name='student_profile'),
     path('student/profile-page/', StudentProfilePageView.as_view(), name='student_profile_page'),
     path('student/activate-profile/', StudentProfileActivationView.as_view(), name='student_activate_profile'),
+    path('student/change-password/', ChangePasswordView.as_view(), name='change_password'),
     # File Upload
     path('upload/profile-picture/', FileUploadView.as_view(), name='upload_profile_picture'),
 ]
