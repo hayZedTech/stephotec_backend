@@ -63,6 +63,19 @@ class StudentCourseSerializer(serializers.ModelSerializer):
             "is_primary": {"required": False, "default": False},
         }
 
+    def validate(self, attrs):
+        student = self.context.get("student")
+        course = attrs.get("course")
+        if student and course:
+            qs = StudentCourse.objects.filter(student=student, course=course)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {"course_id": "This student is already enrolled in this course."}
+                )
+        return attrs
+
 
 class AdminStudentCreationSerializer(serializers.Serializer):
     # User fields

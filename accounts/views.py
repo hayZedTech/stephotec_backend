@@ -272,7 +272,7 @@ class StudentCourseViewSet(viewsets.ModelViewSet):
         data = request.data.copy()
         data['admission_year'] = admission_year
         
-        serializer = self.get_serializer(data=data)
+        serializer = self.get_serializer(data=data, context={**self.get_serializer_context(), "student": student})
         serializer.is_valid(raise_exception=True)
         course_enrollment = serializer.save(student=student)
         

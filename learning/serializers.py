@@ -41,7 +41,11 @@ class LearningContentSerializer(serializers.ModelSerializer):
 
     def validate_file(self, value):
         if value:
-            validate_video_file(value)
+            # Allow both document and video files
+            try:
+                validate_document_file(value)
+            except:
+                validate_video_file(value)
         return value
 
 

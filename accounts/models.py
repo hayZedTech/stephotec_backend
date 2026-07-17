@@ -172,6 +172,12 @@ class StudentCourse(models.Model):
     is_primary = models.BooleanField(default=False)
     class Meta:
         ordering = ["-started_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["student", "course"],
+                name="unique_student_course"
+            )
+        ]
     def __str__(self):
         return f"{self.student} - {self.course}"
     def save(self, *args, **kwargs):
