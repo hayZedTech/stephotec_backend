@@ -4,6 +4,7 @@ from accounts.models import Course, StudentCourse
 from config.validators import (
     validate_document_file,
     validate_video_file,
+    validate_learning_content_file,
     validate_assignment_submission_file,
 )
 
@@ -35,8 +36,8 @@ class LearningContent(models.Model):
         upload_to="learning_content/",
         blank=True,
         null=True,
-        validators=[validate_video_file],
-        help_text="For videos, consider using video_url instead of uploading. Max 50MB."
+        validators=[validate_learning_content_file],
+        help_text="Supports documents (PDF, Word, Excel, etc.) and videos. Max 50MB."
     )
     video_url = models.URLField(blank=True, null=True)
     order = models.PositiveIntegerField(default=0)

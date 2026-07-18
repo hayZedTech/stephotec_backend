@@ -103,6 +103,22 @@ def validate_video_file(file):
     )
 
 
+def validate_learning_content_file(file):
+    """Validate learning content files (documents or videos)"""
+    if not file:
+        return
+    allowed_types = {
+        "extensions": ALLOWED_FILE_TYPES["document"]["extensions"] + ALLOWED_FILE_TYPES["video"]["extensions"],
+        "mime_types": ALLOWED_FILE_TYPES["document"]["mime_types"] + ALLOWED_FILE_TYPES["video"]["mime_types"],
+    }
+    return _validate_file(
+        file,
+        allowed_types,
+        FILE_SIZE_LIMITS["video"],  # use the larger limit
+        "learning content"
+    )
+
+
 def validate_profile_picture(file):
     """Validate profile picture files"""
     return _validate_file(

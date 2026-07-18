@@ -17,6 +17,7 @@ from .models import (
 from config.validators import (
     validate_document_file,
     validate_video_file,
+    validate_learning_content_file,
     validate_assignment_submission_file,
 )
 
@@ -41,12 +42,29 @@ class LearningContentSerializer(serializers.ModelSerializer):
 
     def validate_file(self, value):
         if value:
-            # Allow both document and video files
-            try:
-                validate_document_file(value)
-            except:
-                validate_video_file(value)
+            validate_learning_content_file(value)
         return value
+
+    def update(self, instance, validated_data):
+        request = self.context.get("request")
+        if request:
+            raw_video_url = request.data.get("video_url", None)
+            raw_file = request.data.get("file", None)
+
+            # Switching to URL: clear the existing file
+            if raw_video_url and instance.file:
+                instance.file = None
+                instance.save(update_fields=["file"])
+
+            # Switching to file upload: clear the existing video_url
+            if raw_file and raw_file != "" and instance.video_url:
+                validated_data["video_url"] = None
+
+            # Explicit empty string sent for video_url means clear it
+            if raw_video_url == "":
+                validated_data["video_url"] = None
+
+        return super().update(instance, validated_data)
 
 
 class AssignmentSerializer(serializers.ModelSerializer):
