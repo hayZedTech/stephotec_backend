@@ -109,6 +109,13 @@ class FileUploadService:
             raise ValidationError(f"Upload failed: {str(e)}")
     
     @staticmethod
+    def _get_resource_type(file):
+        """Return 'video' for video files, 'raw' for everything else (docs, PDFs)."""
+        video_exts = {'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv'}
+        ext = file.name.split('.')[-1].lower()
+        return 'video' if ext in video_exts else 'raw'
+
+    @staticmethod
     def upload_learning_material(file, course_id):
         """Upload learning material (doc or video) to Cloudinary (50MB max)"""
         FileUploadService.validate_file(file, 'learning_material')
@@ -116,7 +123,7 @@ class FileUploadService:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/learning-materials/course_{course_id}",
-                resource_type="auto",
+                resource_type=FileUploadService._get_resource_type(file),
             )
             return result['secure_url']
         except Exception as e:
@@ -130,7 +137,7 @@ class FileUploadService:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/submissions/student_{student_id}",
-                resource_type="auto",
+                resource_type="raw",
             )
             return result['secure_url']
         except Exception as e:
@@ -145,7 +152,7 @@ class FileUploadService:
                 file,
                 folder=f"stephotec/certificates",
                 public_id=f"cert_{cert_id}_{int(__import__('time').time())}",
-                resource_type="auto",
+                resource_type="raw",
             )
             return result['secure_url']
         except Exception as e:
@@ -159,7 +166,7 @@ class FileUploadService:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/handouts/course_{course_id}",
-                resource_type="auto",
+                resource_type="raw",
             )
             return result['secure_url']
         except Exception as e:
@@ -173,7 +180,7 @@ class FileUploadService:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/assignments/course_{course_id}",
-                resource_type="auto",
+                resource_type="raw",
             )
             return result['secure_url']
         except Exception as e:
