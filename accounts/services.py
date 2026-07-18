@@ -7,10 +7,11 @@ class FileUploadService:
     """Handle file uploads to Cloudinary"""
     
     MAX_FILE_SIZES = {
-        'profile_picture': 5 * 1024 * 1024,  # 5MB
-        'course_thumbnail': 8 * 1024 * 1024,  # 8MB
-        'document': 20 * 1024 * 1024,  # 20MB
-        'project': 50 * 1024 * 1024,  # 50MB
+        'profile_picture': 5 * 1024 * 1024,
+        'course_thumbnail': 8 * 1024 * 1024,
+        'document': 20 * 1024 * 1024,
+        'project': 50 * 1024 * 1024,
+        'learning_material': 50 * 1024 * 1024,
     }
     
     ALLOWED_EXTENSIONS = {
@@ -18,6 +19,7 @@ class FileUploadService:
         'course_thumbnail': {'jpg', 'jpeg', 'png', 'webp'},
         'document': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'},
         'project': {'zip', 'rar', '7z'},
+        'learning_material': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv'},
     }
     
     @staticmethod
@@ -108,9 +110,8 @@ class FileUploadService:
     
     @staticmethod
     def upload_learning_material(file, course_id):
-        """Upload learning material to Cloudinary (20MB max)"""
-        FileUploadService.validate_file(file, 'document')
-        
+        """Upload learning material (doc or video) to Cloudinary (50MB max)"""
+        FileUploadService.validate_file(file, 'learning_material')
         try:
             result = cloudinary.uploader.upload(
                 file,
@@ -122,10 +123,58 @@ class FileUploadService:
             raise ValidationError(f"Upload failed: {str(e)}")
     
     @staticmethod
-    def delete_file(public_id):
-        """Delete file from Cloudinary"""
+    def upload_submission(file, student_id):
+        """Upload assignment submission to Cloudinary (20MB max)"""
+        FileUploadService.validate_file(file, 'document')
         try:
-            cloudinary.uploader.destroy(public_id)
-            return True
+            result = cloudinary.uploader.upload(
+                file,
+                folder=f"stephotec/submissions/student_{student_id}",
+                resource_type="auto",
+            )
+            return result['secure_url']
         except Exception as e:
-            raise ValidationError(f"Delete failed: {str(e)}")
+            raise ValidationError(f"Upload failed: {str(e)}")
+
+    @staticmethod
+    def upload_certificate(file, cert_id):
+        """Upload certificate file to Cloudinary (10MB max)"""
+        FileUploadService.validate_file(file, 'document')
+        try:
+            result = cloudinary.uploader.upload(
+                file,
+                folder=f"stephotec/certificates",
+                public_id=f"cert_{cert_id}_{int(__import__('time').time())}",
+                resource_type="auto",
+            )
+            return result['secure_url']
+        except Exception as e:
+            raise ValidationError(f"Upload failed: {str(e)}")
+
+    @staticmethod
+    def upload_handout(file, course_id):
+        """Upload handout file to Cloudinary (20MB max)"""
+        FileUploadService.validate_file(file, 'document')
+        try:
+            result = cloudinary.uploader.upload(
+                file,
+                folder=f"stephotec/handouts/course_{course_id}",
+                resource_type="auto",
+            )
+            return result['secure_url']
+        except Exception as e:
+            raise ValidationError(f"Upload failed: {str(e)}")
+
+    @staticmethod
+    def upload_assignment(file, course_id):
+        """Upload assignment instruction file to Cloudinary (10MB max)"""
+        FileUploadService.validate_file(file, 'document')
+        try:
+            result = cloudinary.uploader.upload(
+                file,
+                folder=f"stephotec/assignments/course_{course_id}",
+                resource_type="auto",
+            )
+            return result['secure_url']
+        except Exception as e:
+            raise ValidationError(f"Upload failed: {str(e)}")

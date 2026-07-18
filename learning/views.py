@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from accounts.services import FileUploadService
 from .models import (
     LearningContent,
     Assignment,
@@ -55,6 +56,39 @@ class LearningContentViewSet(viewsets.ModelViewSet):
             return LearningContent.objects.all()
         return LearningContent.objects.filter(is_published=True)
 
+    def _handle_file_upload(self, request, instance=None):
+        """Upload file to Cloudinary and return URL, or None if no file."""
+        uploaded_file = request.FILES.get("file")
+        if not uploaded_file:
+            return None
+        course_id = request.data.get("course") or (instance.course_id if instance else None)
+        return FileUploadService.upload_learning_material(uploaded_file, course_id)
+
+    def create(self, request, *args, **kwargs):
+        file_url = self._handle_file_upload(request)
+        data = request.data.copy()
+        if file_url:
+            data["file"] = file_url
+            data["video_url"] = ""
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        file_url = self._handle_file_upload(request, instance)
+        data = request.data.copy()
+        if file_url:
+            data["file"] = file_url
+            data["video_url"] = None
+        elif data.get("video_url"):
+            data["file"] = None
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
 
 class AssignmentViewSet(viewsets.ModelViewSet):
     serializer_class = AssignmentSerializer
@@ -70,13 +104,28 @@ class AssignmentViewSet(viewsets.ModelViewSet):
             return Assignment.objects.all()
         return Assignment.objects.filter(status="PUBLISHED")
 
-    def perform_create(self, serializer):
-        if self.request.user.role != "ADMIN":
-            return Response(
-                {"detail": "Only admins can create assignments"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+    def create(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can create assignments"}, status=status.HTTP_403_FORBIDDEN)
+        data = request.data.copy()
+        uploaded_file = request.FILES.get("file")
+        if uploaded_file:
+            data["file"] = FileUploadService.upload_assignment(uploaded_file, data.get("course"))
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
         serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        data = request.data.copy()
+        uploaded_file = request.FILES.get("file")
+        if uploaded_file:
+            data["file"] = FileUploadService.upload_assignment(uploaded_file, instance.course_id)
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 class AssignmentSubmissionViewSet(viewsets.ModelViewSet):
@@ -93,8 +142,15 @@ class AssignmentSubmissionViewSet(viewsets.ModelViewSet):
             return AssignmentSubmission.objects.all()
         return AssignmentSubmission.objects.filter(student=user)
 
-    def perform_create(self, serializer):
-        serializer.save(student=self.request.user)
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        uploaded_file = request.FILES.get("file")
+        if uploaded_file:
+            data["file"] = FileUploadService.upload_submission(uploaded_file, request.user.id)
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(student=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], permission_classes=[IsAdminUserRole])
     def grade(self, request, pk=None):
@@ -149,6 +205,27 @@ class CertificateViewSet(viewsets.ModelViewSet):
             return Certificate.objects.all()
         return Certificate.objects.filter(student_course__student=user)
 
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        uploaded_file = request.FILES.get("file")
+        if uploaded_file:
+            data["file"] = FileUploadService.upload_certificate(uploaded_file, "new")
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        data = request.data.copy()
+        uploaded_file = request.FILES.get("file")
+        if uploaded_file:
+            data["file"] = FileUploadService.upload_certificate(uploaded_file, instance.id)
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
     @action(detail=True, methods=["post"], permission_classes=[IsAdminUserRole])
     def issue(self, request, pk=None):
         certificate = self.get_object()
@@ -176,13 +253,28 @@ class HandoutViewSet(viewsets.ModelViewSet):
             return Handout.objects.all()
         return Handout.objects.filter(status="PUBLISHED")
 
-    def perform_create(self, serializer):
-        if self.request.user.role != "ADMIN":
-            return Response(
-                {"detail": "Only admins can create handouts"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+    def create(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can create handouts"}, status=status.HTTP_403_FORBIDDEN)
+        data = request.data.copy()
+        uploaded_file = request.FILES.get("file")
+        if uploaded_file:
+            data["file"] = FileUploadService.upload_handout(uploaded_file, data.get("course"))
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
         serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        data = request.data.copy()
+        uploaded_file = request.FILES.get("file")
+        if uploaded_file:
+            data["file"] = FileUploadService.upload_handout(uploaded_file, instance.course_id)
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 class HandoutPurchaseViewSet(viewsets.ModelViewSet):
@@ -251,8 +343,8 @@ class HandoutPurchaseViewSet(viewsets.ModelViewSet):
 
         return Response(
             {
-                "download_url": purchase.handout.file.url,
-                "filename": purchase.handout.file.name,
+                "download_url": purchase.handout.file,
+                "filename": purchase.handout.file.split("/")[-1],
             }
         )
 

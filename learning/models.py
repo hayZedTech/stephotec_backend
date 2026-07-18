@@ -1,13 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from accounts.models import Course, StudentCourse
-from config.validators import (
-    validate_document_file,
-    validate_video_file,
-    validate_learning_content_file,
-    validate_assignment_submission_file,
-)
-
 User = get_user_model()
 
 
@@ -32,12 +25,10 @@ class LearningContent(models.Model):
         choices=ContentType.choices,
         default=ContentType.DOCUMENT
     )
-    file = models.FileField(
-        upload_to="learning_content/",
+    file = models.URLField(
         blank=True,
         null=True,
-        validators=[validate_learning_content_file],
-        help_text="Supports documents (PDF, Word, Excel, etc.) and videos. Max 50MB."
+        help_text="Cloudinary URL for uploaded file (document or video)."
     )
     video_url = models.URLField(blank=True, null=True)
     order = models.PositiveIntegerField(default=0)
@@ -67,12 +58,10 @@ class Assignment(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField()
     instructions = models.TextField(blank=True)
-    file = models.FileField(
-        upload_to="assignments/",
+    file = models.URLField(
         blank=True,
         null=True,
-        validators=[validate_document_file],
-        help_text="Assignment instruction files. Max 10MB. Supported: PDF, Word, Excel, PowerPoint."
+        help_text="Cloudinary URL for assignment file."
     )
     status = models.CharField(
         max_length=20,
@@ -108,10 +97,8 @@ class AssignmentSubmission(models.Model):
         on_delete=models.CASCADE,
         related_name="assignment_submissions"
     )
-    file = models.FileField(
-        upload_to="submissions/",
-        validators=[validate_assignment_submission_file],
-        help_text="Student submission files. Max 10MB. Supported: PDF, Word, Excel, ZIP."
+    file = models.URLField(
+        help_text="Cloudinary URL for student submission file."
     )
     submitted_at = models.DateTimeField(auto_now_add=True)
     score = models.PositiveIntegerField(null=True, blank=True)
@@ -196,7 +183,7 @@ class Certificate(models.Model):
     )
     earned_date = models.DateField()
     issued_date = models.DateField(null=True, blank=True)
-    file = models.FileField(upload_to="certificates/", blank=True, null=True)
+    file = models.URLField(blank=True, null=True, help_text="Cloudinary URL for certificate file.")
     issued_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -226,7 +213,7 @@ class Handout(models.Model):
     )
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    file = models.FileField(upload_to="handouts/")
+    file = models.URLField(help_text="Cloudinary URL for handout file.")
     price = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(
         max_length=20,

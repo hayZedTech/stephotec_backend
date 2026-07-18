@@ -14,12 +14,6 @@ from .models import (
     StudentCertificate,
     StudentHandout,
 )
-from config.validators import (
-    validate_document_file,
-    validate_video_file,
-    validate_learning_content_file,
-    validate_assignment_submission_file,
-)
 
 
 class LearningContentSerializer(serializers.ModelSerializer):
@@ -39,32 +33,6 @@ class LearningContentSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
-
-    def validate_file(self, value):
-        if value:
-            validate_learning_content_file(value)
-        return value
-
-    def update(self, instance, validated_data):
-        request = self.context.get("request")
-        if request:
-            raw_video_url = request.data.get("video_url", None)
-            raw_file = request.data.get("file", None)
-
-            # Switching to URL: clear the existing file
-            if raw_video_url and instance.file:
-                instance.file = None
-                instance.save(update_fields=["file"])
-
-            # Switching to file upload: clear the existing video_url
-            if raw_file and raw_file != "" and instance.video_url:
-                validated_data["video_url"] = None
-
-            # Explicit empty string sent for video_url means clear it
-            if raw_video_url == "":
-                validated_data["video_url"] = None
-
-        return super().update(instance, validated_data)
 
 
 class AssignmentSerializer(serializers.ModelSerializer):
@@ -91,11 +59,6 @@ class AssignmentSerializer(serializers.ModelSerializer):
     def get_submission_count(self, obj):
         return obj.submissions.count()
 
-    def validate_file(self, value):
-        if value:
-            validate_document_file(value)
-        return value
-
 
 class AssignmentSubmissionSerializer(serializers.ModelSerializer):
     assignment_title = serializers.CharField(source="assignment.title", read_only=True)
@@ -118,11 +81,6 @@ class AssignmentSubmissionSerializer(serializers.ModelSerializer):
             "graded_by",
         ]
         read_only_fields = ["id", "student", "submitted_at", "graded_at"]
-
-    def validate_file(self, value):
-        if value:
-            validate_assignment_submission_file(value)
-        return value
 
 
 class AttendanceSerializer(serializers.ModelSerializer):
