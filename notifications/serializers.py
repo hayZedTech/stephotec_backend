@@ -1,8 +1,23 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Notification, NotificationRecipient
+from .models import Notification, NotificationRecipient, AdminAlert
 
 User = get_user_model()
+
+
+class AdminAlertSerializer(serializers.ModelSerializer):
+    triggered_by_name = serializers.CharField(source="triggered_by.get_full_name", read_only=True)
+    triggered_by_username = serializers.CharField(source="triggered_by.username", read_only=True)
+
+    class Meta:
+        model = AdminAlert
+        fields = [
+            "id", "alert_type", "title", "message",
+            "triggered_by", "triggered_by_name", "triggered_by_username",
+            "related_object_id", "is_read", "read_at", "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
 
 class NotificationRecipientSerializer(serializers.ModelSerializer):
     recipient_name = serializers.CharField(source="recipient.get_full_name", read_only=True)

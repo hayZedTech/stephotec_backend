@@ -6,6 +6,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from accounts.services import FileUploadService
+from notifications.models import AdminAlert
 from .models import (
     LearningContent,
     Assignment,
@@ -178,17 +179,133 @@ class AssignmentSubmissionViewSet(viewsets.ModelViewSet):
 
 class AttendanceViewSet(viewsets.ModelViewSet):
     serializer_class = AttendanceSerializer
-    permission_classes = [IsAdminUserRole]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ["student_course", "date", "status"]
+    filterset_fields = ["student_course", "date", "status", "approval_status"]
     ordering_fields = ["date"]
     ordering = ["-date"]
 
+    def get_permissions(self):
+        if self.action in ["mark_attendance", "my_attendance", "cancel_attendance"]:
+            return [IsAuthenticated()]
+        return [IsAdminUserRole()]
+
     def get_queryset(self):
-        return Attendance.objects.all()
+        user = self.request.user
+        if user.role == "ADMIN":
+            return Attendance.objects.select_related(
+                "student_course__student", "student_course__course", "approved_by"
+            ).all()
+        return Attendance.objects.filter(student_course__student=user)
 
     def perform_create(self, serializer):
         serializer.save(recorded_by=self.request.user)
+
+    @action(detail=False, methods=["post"], url_path="mark")
+    def mark_attendance(self, request):
+        """Student marks their own attendance for a specific date (defaults to today)."""
+        student_course_id = request.data.get("student_course")
+        date = request.data.get("date") or timezone.now().date()
+        remarks = request.data.get("remarks", "")
+
+        if not student_course_id:
+            return Response({"detail": "student_course is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            student_course = StudentCourse.objects.get(id=student_course_id, student=request.user)
+        except StudentCourse.DoesNotExist:
+            return Response({"detail": "Student course not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        existing = Attendance.objects.filter(student_course=student_course, date=date).first()
+        if existing:
+            return Response(
+                {"detail": "Attendance already marked for this date", "attendance": AttendanceSerializer(existing).data},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        attendance = Attendance.objects.create(
+            student_course=student_course,
+            date=date,
+            status="PRESENT",
+            approval_status="PENDING",
+            remarks=remarks,
+            recorded_by=request.user,
+        )
+
+        # Notify admins
+        student_name = request.user.get_full_name() or request.user.username
+        AdminAlert.objects.create(
+            alert_type=AdminAlert.AlertType.ATTENDANCE_REQUEST,
+            title=f"Attendance Request — {student_name}",
+            message=(
+                f"{student_name} ({student_course.enrollment_id}) marked attendance "
+                f"for {date} in {student_course.course.name}."
+                + (f" Note: {remarks}" if remarks else "")
+            ),
+            triggered_by=request.user,
+            related_object_id=attendance.id,
+        )
+
+        return Response(AttendanceSerializer(attendance).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["get"], url_path="my_attendance")
+    def my_attendance(self, request):
+        """Student fetches their own attendance records."""
+        student_course_id = request.query_params.get("student_course")
+        month = request.query_params.get("month")  # format: YYYY-MM
+
+        qs = Attendance.objects.filter(student_course__student=request.user)
+
+        if student_course_id:
+            qs = qs.filter(student_course_id=student_course_id)
+        if month:
+            try:
+                year, m = month.split("-")
+                qs = qs.filter(date__year=year, date__month=m)
+            except ValueError:
+                pass
+
+        serializer = AttendanceSerializer(qs.order_by("-date"), many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["delete"], url_path="cancel")
+    def cancel_attendance(self, request, pk=None):
+        """Student cancels a pending attendance mark."""
+        attendance = self.get_object()
+        if attendance.student_course.student != request.user:
+            return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+        if attendance.approval_status != "PENDING":
+            return Response({"detail": "Cannot cancel an already reviewed attendance"}, status=status.HTTP_400_BAD_REQUEST)
+        attendance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["post"], url_path="approve")
+    def approve(self, request, pk=None):
+        """Admin approves a pending attendance."""
+        attendance = self.get_object()
+        attendance.approval_status = "APPROVED"
+        attendance.approved_by = request.user
+        attendance.approved_at = timezone.now()
+        attendance.save()
+        return Response(AttendanceSerializer(attendance).data)
+
+    @action(detail=True, methods=["post"], url_path="reject")
+    def reject(self, request, pk=None):
+        """Admin rejects a pending attendance."""
+        attendance = self.get_object()
+        attendance.approval_status = "REJECTED"
+        attendance.approved_by = request.user
+        attendance.approved_at = timezone.now()
+        attendance.remarks = request.data.get("remarks", attendance.remarks)
+        attendance.save()
+        return Response(AttendanceSerializer(attendance).data)
+
+    @action(detail=False, methods=["get"], url_path="pending")
+    def pending(self, request):
+        """Admin fetches all pending attendance records."""
+        qs = Attendance.objects.filter(approval_status="PENDING").select_related(
+            "student_course__student", "student_course__course"
+        ).order_by("-date")
+        return Response(AttendanceSerializer(qs, many=True).data)
 
 
 class CertificateViewSet(viewsets.ModelViewSet):

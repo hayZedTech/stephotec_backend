@@ -87,8 +87,17 @@ class AttendanceSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(
         source="student_course.student.get_full_name", read_only=True
     )
+    student_username = serializers.CharField(
+        source="student_course.student.username", read_only=True
+    )
     course_name = serializers.CharField(
         source="student_course.course.name", read_only=True
+    )
+    enrollment_id = serializers.CharField(
+        source="student_course.enrollment_id", read_only=True
+    )
+    approved_by_name = serializers.CharField(
+        source="approved_by.get_full_name", read_only=True
     )
 
     class Meta:
@@ -97,14 +106,20 @@ class AttendanceSerializer(serializers.ModelSerializer):
             "id",
             "student_course",
             "student_name",
+            "student_username",
+            "enrollment_id",
             "course_name",
             "date",
             "status",
+            "approval_status",
             "remarks",
             "recorded_by",
             "recorded_at",
+            "approved_by",
+            "approved_by_name",
+            "approved_at",
         ]
-        read_only_fields = ["id", "recorded_at"]
+        read_only_fields = ["id", "recorded_at", "approved_by", "approved_at", "approved_by_name"]
 
 
 class CertificateSerializer(serializers.ModelSerializer):

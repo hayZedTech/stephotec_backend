@@ -5,16 +5,43 @@ from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
-from .models import Notification, NotificationRecipient
+from .models import Notification, NotificationRecipient, AdminAlert
 from .serializers import (
     NotificationSerializer,
     NotificationCreateSerializer,
     StudentNotificationSerializer,
+    AdminAlertSerializer,
 )
 from accounts.models import StudentCourse
 from accounts.permissions import IsAdminUserRole
 
 User = get_user_model()
+
+
+class AdminAlertViewSet(viewsets.ReadOnlyModelViewSet):
+    """Admin-only inbox for system-generated alerts."""
+    serializer_class = AdminAlertSerializer
+    permission_classes = [IsAdminUserRole]
+
+    def get_queryset(self):
+        return AdminAlert.objects.all()
+
+    @action(detail=True, methods=["post"], url_path="mark_read")
+    def mark_read(self, request, pk=None):
+        alert = self.get_object()
+        alert.is_read = True
+        alert.read_at = timezone.now()
+        alert.save()
+        return Response(AdminAlertSerializer(alert).data)
+
+    @action(detail=False, methods=["post"], url_path="mark_all_read")
+    def mark_all_read(self, request):
+        AdminAlert.objects.filter(is_read=False).update(is_read=True, read_at=timezone.now())
+        return Response({"detail": "All alerts marked as read"})
+
+    @action(detail=False, methods=["get"], url_path="unread_count")
+    def unread_count(self, request):
+        return Response({"unread_count": AdminAlert.objects.filter(is_read=False).count()})
 
 
 class NotificationViewSet(viewsets.ModelViewSet):

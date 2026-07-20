@@ -133,6 +133,11 @@ class Attendance(models.Model):
         LATE = "LATE", "Late"
         EXCUSED = "EXCUSED", "Excused"
 
+    class ApprovalStatus(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+
     student_course = models.ForeignKey(
         StudentCourse,
         on_delete=models.CASCADE,
@@ -144,6 +149,11 @@ class Attendance(models.Model):
         choices=Status.choices,
         default=Status.PRESENT
     )
+    approval_status = models.CharField(
+        max_length=20,
+        choices=ApprovalStatus.choices,
+        default=ApprovalStatus.PENDING
+    )
     remarks = models.TextField(blank=True)
     recorded_by = models.ForeignKey(
         User,
@@ -152,6 +162,14 @@ class Attendance(models.Model):
         blank=True,
         related_name="recorded_attendance"
     )
+    approved_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_attendance"
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
     recorded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
