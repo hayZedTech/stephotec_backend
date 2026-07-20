@@ -24,10 +24,16 @@ class PaymentViewSet(
             "student_course__course",
         ).all()
 
-    @action(detail=True, methods=["get"], url_path="history")
+    @action(detail=True, methods=["get"], url_path="history", permission_classes=[IsAuthenticated])
     def history(self, request, pk=None):
         """Return all payment entries for a specific payment record."""
-        payment = self.get_object()
+        payment = Payment.objects.select_related(
+            "student_course__student",
+            "student_course__course",
+        ).get(pk=pk)
+        # Allow admin or the student who owns this payment
+        if not request.user.is_staff and payment.student_course.student != request.user:
+            return Response({"detail": "Not found."}, status=404)
         entries = payment.entries.select_related("recorded_by").all()
         serializer = PaymentEntrySerializer(entries, many=True)
         return Response(serializer.data)
