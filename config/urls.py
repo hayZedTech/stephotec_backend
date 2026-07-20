@@ -16,6 +16,7 @@ urlpatterns = [
     path('api/v1/audit/', include('audit.urls')),
     path('api/v1/learning/', include('learning.urls')),
     path('api/v1/notifications/', include('notifications.urls')),
+    path('api/v1/payments/', include('payments.urls')),
     
     # OpenAPI Schema Auto-Generation Engines & Swagger UIs
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
