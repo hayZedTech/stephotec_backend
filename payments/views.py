@@ -4,8 +4,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from accounts.permissions import IsAdminUserRole
 from accounts.models import StudentCourse, User
-from .models import Payment
-from .serializers import PaymentSerializer, StudentPaymentSummarySerializer
+from .models import Payment, PaymentEntry
+from .serializers import PaymentSerializer, PaymentEntrySerializer, StudentPaymentSummarySerializer
 from decimal import Decimal
 
 
@@ -23,6 +23,41 @@ class PaymentViewSet(
             "student_course__student",
             "student_course__course",
         ).all()
+
+    @action(detail=True, methods=["get"], url_path="history")
+    def history(self, request, pk=None):
+        """Return all payment entries for a specific payment record."""
+        payment = self.get_object()
+        entries = payment.entries.select_related("recorded_by").all()
+        serializer = PaymentEntrySerializer(entries, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="history/add")
+    def add_entry(self, request, pk=None):
+        """Add a new payment entry and update the payment's amount_paid."""
+        payment = self.get_object()
+        serializer = PaymentEntrySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entry = serializer.save(payment=payment, recorded_by=request.user)
+        # Recalculate total amount paid from all entries
+        total = sum(e.amount for e in payment.entries.all())
+        payment.amount_paid = total
+        payment.save()
+        return Response(PaymentEntrySerializer(entry).data, status=201)
+
+    @action(detail=True, methods=["delete"], url_path="history/(?P<entry_pk>[^/.]+)/delete")
+    def delete_entry(self, request, pk=None, entry_pk=None):
+        """Delete a payment entry and recalculate amount_paid."""
+        payment = self.get_object()
+        try:
+            entry = payment.entries.get(pk=entry_pk)
+        except PaymentEntry.DoesNotExist:
+            return Response({"detail": "Entry not found."}, status=404)
+        entry.delete()
+        total = sum(e.amount for e in payment.entries.all())
+        payment.amount_paid = total
+        payment.save()
+        return Response(status=204)
 
     @action(detail=False, methods=["get"], url_path="my", permission_classes=[IsAuthenticated])
     def my_payments(self, request):

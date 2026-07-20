@@ -1,5 +1,19 @@
 from rest_framework import serializers
-from .models import Payment
+from .models import Payment, PaymentEntry
+
+
+class PaymentEntrySerializer(serializers.ModelSerializer):
+    recorded_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PaymentEntry
+        fields = ["id", "amount", "mode", "note", "recorded_by_name", "date"]
+        read_only_fields = ["id", "recorded_by_name", "date"]
+
+    def get_recorded_by_name(self, obj):
+        if obj.recorded_by:
+            return f"{obj.recorded_by.first_name} {obj.recorded_by.last_name}".strip() or obj.recorded_by.username
+        return None
 
 
 class PaymentSerializer(serializers.ModelSerializer):

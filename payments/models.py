@@ -41,3 +41,29 @@ class Payment(models.Model):
         else:
             self.status = self.Status.UNPAID
         super().save(*args, **kwargs)
+
+
+class PaymentEntry(models.Model):
+    """Individual payment transaction log for a Payment record."""
+    payment = models.ForeignKey(
+        Payment,
+        on_delete=models.CASCADE,
+        related_name="entries",
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    mode = models.CharField(max_length=100, blank=True, help_text="e.g. Bank Transfer, Cash, POS")
+    note = models.TextField(blank=True, help_text="Additional details about this payment")
+    recorded_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="payment_entries",
+    )
+    date = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-date"]
+
+    def __str__(self):
+        return f"{self.payment} — {self.amount} on {self.date:%Y-%m-%d}"
