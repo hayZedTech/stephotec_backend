@@ -21,6 +21,7 @@ class CourseSerializer(serializers.ModelSerializer):
             "name",
             "code_prefix",
             "is_active",
+            "default_fee",
             "student_count",
             "created_at",
         ]
@@ -29,6 +30,9 @@ class CourseSerializer(serializers.ModelSerializer):
             "student_count",
             "created_at",
         ]
+        extra_kwargs = {
+            "default_fee": {"required": True, "min_value": 1},
+        }
 
 class StudentCourseSerializer(serializers.ModelSerializer):
     course = CourseSerializer(read_only=True)
@@ -160,12 +164,18 @@ class AdminStudentCreationSerializer(serializers.Serializer):
         user.set_password(temporary_password)
         user.save()
         # Create StudentCourse record
-        StudentCourse.objects.create(
+        sc = StudentCourse.objects.create(
             student=user,
             course=course,
             admission_year=admission_year,
             is_primary=is_primary,
         )
+        # Auto-create Payment with course default_fee
+        from payments.models import Payment
+        payment = Payment.objects.create(student_course=sc)
+        if course.default_fee:
+            payment.course_fee = course.default_fee
+            payment.save()
         return user
     
     def update(self, instance, validated_data):

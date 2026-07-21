@@ -276,6 +276,13 @@ class StudentCourseViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         course_enrollment = serializer.save(student=student)
         
+        # Auto-create Payment with course default_fee
+        from payments.models import Payment
+        payment, _ = Payment.objects.get_or_create(student_course=course_enrollment)
+        if payment.course_fee == 0 and course_enrollment.course.default_fee:
+            payment.course_fee = course_enrollment.course.default_fee
+            payment.save()
+        
         log_action(
             request.user,
             student,

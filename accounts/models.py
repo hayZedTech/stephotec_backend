@@ -18,6 +18,7 @@ class Course(models.Model):
     name = models.CharField(max_length=255, unique=True)
     code_prefix = models.CharField(max_length=10, unique=True)
     is_active = models.BooleanField(default=True)
+    default_fee = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     def __str__(self):
         return f"{self.name} ({self.code_prefix})"

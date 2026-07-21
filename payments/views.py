@@ -32,7 +32,7 @@ class PaymentViewSet(
             "student_course__course",
         ).get(pk=pk)
         # Allow admin or the student who owns this payment
-        if not request.user.is_staff and payment.student_course.student != request.user:
+        if request.user.role != "ADMIN" and payment.student_course.student != request.user:
             return Response({"detail": "Not found."}, status=404)
         entries = payment.entries.select_related("recorded_by").all()
         serializer = PaymentEntrySerializer(entries, many=True)
@@ -79,11 +79,14 @@ class PaymentViewSet(
 
     @action(detail=False, methods=["post"], url_path="ensure")
     def ensure_all(self, request):
-        """Create missing Payment records for all StudentCourse entries."""
+        """Create missing Payment records for all StudentCourse entries, applying course default_fee."""
         created = 0
-        for sc in StudentCourse.objects.all():
-            _, was_created = Payment.objects.get_or_create(student_course=sc)
+        for sc in StudentCourse.objects.select_related("course").all():
+            payment, was_created = Payment.objects.get_or_create(student_course=sc)
             if was_created:
+                if sc.course.default_fee:
+                    payment.course_fee = sc.course.default_fee
+                    payment.save()
                 created += 1
         return Response({"created": created})
 
