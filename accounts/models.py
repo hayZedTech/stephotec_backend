@@ -13,6 +13,19 @@ class UserManager(DjangoUserManager):
     def get_queryset(self):
         return super().get_queryset().filter(is_deleted=False)
 
+    def create_superuser(self, username, email=None, password=None, **extra_fields):
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        extra_fields.setdefault("is_active", True)
+        extra_fields.setdefault("role", User.Role.ADMIN)
+
+        return super().create_superuser(
+            username=username,
+            email=email,
+            password=password,
+            **extra_fields,
+        )
+
 # Course
 class Course(models.Model):
     name = models.CharField(max_length=255, unique=True)
@@ -126,6 +139,10 @@ class User(AbstractUser):
             sequence = 1
         return f"STEPH{sequence:06d}"
     def save(self, *args, **kwargs):
+    # Ensure all Django superusers are ADMINs
+        if self.is_superuser:
+            self.role = self.Role.ADMIN
+
         if self.pk:
             old = User.all_objects.get(pk=self.pk)
             if (
@@ -135,12 +152,14 @@ class User(AbstractUser):
                 raise ValidationError(
                     "Student username cannot be modified."
                 )
+
         if (
             self.role == self.Role.STUDENT
             and not self.pk
             and not self.username
         ):
             self.username = self.generate_username()
+
         super().save(*args, **kwargs)
 
 # Student Course
