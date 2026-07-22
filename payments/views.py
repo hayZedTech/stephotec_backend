@@ -1,12 +1,22 @@
-from rest_framework import viewsets, mixins
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from accounts.permissions import IsAdminUserRole
-from accounts.models import StudentCourse, User
-from .models import Payment, PaymentEntry
-from .serializers import PaymentSerializer, PaymentEntrySerializer, StudentPaymentSummarySerializer
 from decimal import Decimal
+
+from django.core.exceptions import ValidationError as DjangoValidationError
+
+from rest_framework import mixins, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from accounts.models import StudentCourse, User
+from accounts.permissions import IsAdminUserRole
+
+from .models import Payment, PaymentEntry
+from .serializers import (
+    PaymentSerializer,
+    PaymentEntrySerializer,
+    StudentPaymentSummarySerializer,
+)
 
 
 class PaymentViewSet(
@@ -31,9 +41,11 @@ class PaymentViewSet(
             "student_course__student",
             "student_course__course",
         ).get(pk=pk)
+
         # Allow admin or the student who owns this payment
         if request.user.role != "ADMIN" and payment.student_course.student != request.user:
             return Response({"detail": "Not found."}, status=404)
+
         entries = payment.entries.select_related("recorded_by").all()
         serializer = PaymentEntrySerializer(entries, many=True)
         return Response(serializer.data)
@@ -42,27 +54,44 @@ class PaymentViewSet(
     def add_entry(self, request, pk=None):
         """Add a new payment entry and update the payment's amount_paid."""
         payment = self.get_object()
+
         serializer = PaymentEntrySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        entry = serializer.save(payment=payment, recorded_by=request.user)
+
+        try:
+            entry = serializer.save(
+                payment=payment,
+                recorded_by=request.user,
+            )
+        except DjangoValidationError as e:
+            # Return a proper HTTP 400 instead of a 500 Internal Server Error.
+            if hasattr(e, "message_dict"):
+                raise DRFValidationError(e.message_dict)
+            raise DRFValidationError({"detail": e.messages})
+
         # Recalculate total amount paid from all entries
         total = sum(e.amount for e in payment.entries.all())
         payment.amount_paid = total
         payment.save()
+
         return Response(PaymentEntrySerializer(entry).data, status=201)
 
     @action(detail=True, methods=["delete"], url_path="history/(?P<entry_pk>[^/.]+)/delete")
     def delete_entry(self, request, pk=None, entry_pk=None):
         """Delete a payment entry and recalculate amount_paid."""
         payment = self.get_object()
+
         try:
             entry = payment.entries.get(pk=entry_pk)
         except PaymentEntry.DoesNotExist:
             return Response({"detail": "Entry not found."}, status=404)
+
         entry.delete()
+
         total = sum(e.amount for e in payment.entries.all())
         payment.amount_paid = total
         payment.save()
+
         return Response(status=204)
 
     @action(detail=False, methods=["get"], url_path="my", permission_classes=[IsAuthenticated])
@@ -74,6 +103,7 @@ class PaymentViewSet(
         ).filter(
             student_course__student=request.user
         ).order_by("-student_course__is_primary", "student_course__course__name")
+
         serializer = PaymentSerializer(payments, many=True)
         return Response(serializer.data)
 
@@ -81,13 +111,16 @@ class PaymentViewSet(
     def ensure_all(self, request):
         """Create missing Payment records for all StudentCourse entries, applying course default_fee."""
         created = 0
+
         for sc in StudentCourse.objects.select_related("course").all():
             payment, was_created = Payment.objects.get_or_create(student_course=sc)
+
             if was_created:
                 if sc.course.default_fee:
                     payment.course_fee = sc.course.default_fee
                     payment.save()
                 created += 1
+
         return Response({"created": created})
 
     @action(detail=False, methods=["get"], url_path="by_student")
@@ -98,11 +131,12 @@ class PaymentViewSet(
             "-student_course__is_primary",
         )
 
-        # Group by student
         student_map = {}
+
         for p in payments:
             student = p.student_course.student
             sid = student.id
+
             if sid not in student_map:
                 student_map[sid] = {
                     "student_id": sid,
@@ -115,7 +149,9 @@ class PaymentViewSet(
                     "primary_status": "UNPAID",
                     "courses": [],
                 }
+
             student_map[sid]["courses"].append(p)
+
             if p.student_course.is_primary:
                 student_map[sid]["primary_course_name"] = p.student_course.course.name
                 student_map[sid]["primary_course_fee"] = p.course_fee
@@ -133,5 +169,9 @@ class PaymentViewSet(
                 data["primary_outstanding"] = first.outstanding
                 data["primary_status"] = first.status
 
-        serializer = StudentPaymentSummarySerializer(list(student_map.values()), many=True)
+        serializer = StudentPaymentSummarySerializer(
+            list(student_map.values()),
+            many=True,
+        )
+
         return Response(serializer.data)

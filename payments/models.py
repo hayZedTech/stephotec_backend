@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 from django.db import models
+from django.core.exceptions import ValidationError
 from accounts.models import StudentCourse
 from django.contrib.auth import get_user_model
 
@@ -40,19 +43,28 @@ class Payment(models.Model):
             self.status = self.Status.PARTIAL
         else:
             self.status = self.Status.UNPAID
+
         super().save(*args, **kwargs)
 
 
 class PaymentEntry(models.Model):
     """Individual payment transaction log for a Payment record."""
+
     payment = models.ForeignKey(
         Payment,
         on_delete=models.CASCADE,
         related_name="entries",
     )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    mode = models.CharField(max_length=100, blank=True, help_text="e.g. Bank Transfer, Cash, POS")
-    note = models.TextField(blank=True, help_text="Additional details about this payment")
+    mode = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="e.g. Bank Transfer, Cash, POS",
+    )
+    note = models.TextField(
+        blank=True,
+        help_text="Additional details about this payment",
+    )
     recorded_by = models.ForeignKey(
         User,
         null=True,
@@ -67,3 +79,29 @@ class PaymentEntry(models.Model):
 
     def __str__(self):
         return f"{self.payment} — {self.amount} on {self.date:%Y-%m-%d}"
+
+    def clean(self):
+        super().clean()
+
+        if self.amount <= Decimal("0.00"):
+            raise ValidationError({
+                "amount": "Payment amount must be greater than zero."
+            })
+
+        remaining = self.payment.course_fee - self.payment.amount_paid
+
+        if self.amount > remaining:
+            raise ValidationError({
+                "amount": (
+                    f"This payment exceeds the course fee.\n\n"
+                    f"Course Fee: ₦{self.payment.course_fee:,.2f}\n"
+                    f"Paid So Far: ₦{self.payment.amount_paid:,.2f}\n"
+                    f"Remaining Balance: ₦{remaining:,.2f}\n"
+                    f"Attempted Top-up: ₦{self.amount:,.2f}\n\n"
+                    f"You can only accept a maximum payment of ₦{remaining:,.2f}."
+                )
+            })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
