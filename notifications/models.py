@@ -9,6 +9,9 @@ class AdminAlert(models.Model):
 
     class AlertType(models.TextChoices):
         ATTENDANCE_REQUEST = "ATTENDANCE_REQUEST", "Attendance Request"
+        ASSIGNMENT_SUBMISSION = "ASSIGNMENT_SUBMISSION", "Assignment Submission"
+        HANDOUT_REQUEST = "HANDOUT_REQUEST", "Handout Request"
+        STUDENT_ACTION = "STUDENT_ACTION", "Student Action"
 
     alert_type = models.CharField(max_length=50, choices=AlertType.choices)
     title = models.CharField(max_length=255)

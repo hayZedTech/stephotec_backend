@@ -431,3 +431,24 @@ class StudentHandout(models.Model):
 
     def __str__(self):
         return f"{self.student.username} - {self.handout.title}"
+
+
+class Brochure(models.Model):
+    """Course brochure / outline uploaded by admin for courses"""
+    course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name="brochures"
+    )
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    file = models.URLField(help_text="Cloudinary URL for brochure / course outline file.")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.course.name} - {self.title}"
+

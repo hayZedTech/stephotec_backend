@@ -7,6 +7,7 @@ from .models import (
     Certificate,
     Handout,
     HandoutPurchase,
+    Brochure,
     Notification,
     Message,
     StudentLearningContent,
@@ -126,6 +127,12 @@ class CertificateSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(
         source="student_course.student.get_full_name", read_only=True
     )
+    student_id = serializers.IntegerField(
+        source="student_course.student.id", read_only=True
+    )
+    student_username = serializers.CharField(
+        source="student_course.student.username", read_only=True
+    )
     course_name = serializers.CharField(
         source="student_course.course.name", read_only=True
     )
@@ -135,6 +142,8 @@ class CertificateSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "student_course",
+            "student_id",
+            "student_username",
             "student_name",
             "course_name",
             "title",
@@ -171,9 +180,30 @@ class HandoutSerializer(serializers.ModelSerializer):
         return obj.purchases.filter(status="COMPLETED").count()
 
 
+class BrochureSerializer(serializers.ModelSerializer):
+    course_name = serializers.CharField(source="course.name", read_only=True)
+
+    class Meta:
+        model = Brochure
+        fields = [
+            "id",
+            "course",
+            "course_name",
+            "title",
+            "description",
+            "file",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+
 class HandoutPurchaseSerializer(serializers.ModelSerializer):
     handout_title = serializers.CharField(source="handout.title", read_only=True)
     student_name = serializers.CharField(source="student.get_full_name", read_only=True)
+    student_id = serializers.IntegerField(source="student.id", read_only=True)
+    student_username = serializers.CharField(source="student.username", read_only=True)
 
     class Meta:
         model = HandoutPurchase
@@ -182,6 +212,8 @@ class HandoutPurchaseSerializer(serializers.ModelSerializer):
             "handout",
             "handout_title",
             "student",
+            "student_id",
+            "student_username",
             "student_name",
             "amount_paid",
             "status",

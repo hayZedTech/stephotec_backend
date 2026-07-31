@@ -7,7 +7,11 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from accounts.services import FileUploadService
 from notifications.models import AdminAlert
-from notifications.services import send_student_notification, send_bulk_student_notifications
+from notifications.services import (
+    send_student_notification,
+    send_bulk_student_notifications,
+    notify_admins,
+)
 from .models import (
     LearningContent,
     Assignment,
@@ -16,6 +20,7 @@ from .models import (
     Certificate,
     Handout,
     HandoutPurchase,
+    Brochure,
     Notification,
     Message,
     StudentLearningContent,
@@ -31,6 +36,7 @@ from .serializers import (
     CertificateSerializer,
     HandoutSerializer,
     HandoutPurchaseSerializer,
+    BrochureSerializer,
     NotificationSerializer,
     MessageSerializer,
     StudentLearningContentSerializer,
@@ -151,7 +157,19 @@ class AssignmentSubmissionViewSet(viewsets.ModelViewSet):
             data["file"] = FileUploadService.upload_submission(uploaded_file, request.user.id)
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
-        serializer.save(student=request.user)
+        submission = serializer.save(student=request.user)
+
+        # Notify admins about assignment submission
+        student_name = request.user.get_full_name() or request.user.username
+        assignment_title = submission.assignment.title if hasattr(submission, "assignment") else "Assignment"
+        notify_admins(
+            title="New Assignment Submission",
+            message=f"{student_name} ({request.user.username}) submitted assignment '{assignment_title}'.",
+            alert_type="ASSIGNMENT_SUBMISSION",
+            triggered_by=request.user,
+            related_object_id=submission.id,
+        )
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], permission_classes=[IsAdminUserRole])
@@ -243,14 +261,14 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
         # Notify admins
         student_name = request.user.get_full_name() or request.user.username
-        AdminAlert.objects.create(
-            alert_type=AdminAlert.AlertType.ATTENDANCE_REQUEST,
+        notify_admins(
             title=f"Attendance Request — {student_name}",
             message=(
                 f"{student_name} ({student_course.enrollment_id}) marked attendance "
                 f"for {date} in {student_course.course.name}."
                 + (f" Note: {remarks}" if remarks else "")
             ),
+            alert_type="ATTENDANCE_REQUEST",
             triggered_by=request.user,
             related_object_id=attendance.id,
         )
@@ -448,6 +466,54 @@ class HandoutViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+class BrochureViewSet(viewsets.ModelViewSet):
+    serializer_class = BrochureSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["course"]
+    search_fields = ["title", "description"]
+    ordering_fields = ["created_at"]
+    ordering = ["-created_at"]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == "ADMIN":
+            return Brochure.objects.all()
+        # For students: return brochures for courses the student is registered/enrolled in
+        student_course_ids = user.courses.values_list("course_id", flat=True)
+        return Brochure.objects.filter(course_id__in=student_course_ids)
+
+    def create(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can upload brochures"}, status=status.HTTP_403_FORBIDDEN)
+        data = request.data.copy()
+        uploaded_file = request.FILES.get("file")
+        if uploaded_file:
+            data["file"] = FileUploadService.upload_brochure(uploaded_file, data.get("course"))
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can update brochures"}, status=status.HTTP_403_FORBIDDEN)
+        instance = self.get_object()
+        data = request.data.copy()
+        uploaded_file = request.FILES.get("file")
+        if uploaded_file:
+            data["file"] = FileUploadService.upload_brochure(uploaded_file, instance.course_id)
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can delete brochures"}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+
+
 class HandoutPurchaseViewSet(viewsets.ModelViewSet):
     serializer_class = HandoutPurchaseSerializer
     permission_classes = [IsAuthenticated]
@@ -511,12 +577,13 @@ class HandoutPurchaseViewSet(viewsets.ModelViewSet):
         )
 
         # Notify all admins about the new request
-        admin_users = list(User.objects.filter(role="ADMIN"))
         student_name = request.user.get_full_name() or request.user.username
-        send_bulk_student_notifications(
-            students=admin_users,
+        notify_admins(
             title="New Handout Payment Request",
-            message=f"{student_name} ({request.user.username}) has requested '{handout.title}' (₦{handout.price:,.2f}). Please confirm payment and approve.",
+            message=f"{student_name} ({request.user.username}) requested handout '{handout.title}' (₦{handout.price:,.2f}). Please confirm payment and approve.",
+            alert_type="HANDOUT_REQUEST",
+            triggered_by=request.user,
+            related_object_id=purchase.id,
         )
 
         return Response(

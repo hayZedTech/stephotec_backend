@@ -103,13 +103,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=["get"])
     def student_notifications(self, request):
-        """Get notifications for the current student"""
-        if request.user.role != User.Role.STUDENT:
-            return Response(
-                {"detail": "This endpoint is only for students."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        
+        """Get notifications for the current user (students and admins)"""
         notifications = Notification.objects.filter(
             recipients__recipient=request.user
         ).distinct()
@@ -148,12 +142,6 @@ class NotificationViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def unread_count(self, request):
         """Get count of unread notifications for current user"""
-        if request.user.role != User.Role.STUDENT:
-            return Response(
-                {"detail": "This endpoint is only for students."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        
         unread_count = NotificationRecipient.objects.filter(
             recipient=request.user,
             is_read=False

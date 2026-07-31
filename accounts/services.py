@@ -14,6 +14,7 @@ class FileUploadService:
         'learning_material': 50 * 1024 * 1024,
         'certificate': 10 * 1024 * 1024,
         'handout': 20 * 1024 * 1024,
+        'brochure': 20 * 1024 * 1024,
         'assignment': 20 * 1024 * 1024,
         'submission': 20 * 1024 * 1024,
     }
@@ -26,6 +27,7 @@ class FileUploadService:
         'learning_material': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv', 'png', 'jpg', 'jpeg', 'webp', 'zip'},
         'certificate': {'pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx'},
         'handout': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'zip', 'rar'},
+        'brochure': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'zip', 'rar'},
         'assignment': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'zip', 'rar'},
         'submission': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'zip', 'rar'},
     }
@@ -193,3 +195,18 @@ class FileUploadService:
             return result['secure_url']
         except Exception as e:
             raise ValidationError(f"Upload failed: {str(e)}")
+
+    @staticmethod
+    def upload_brochure(file, course_id):
+        """Upload brochure / course outline file to Cloudinary (20MB max)"""
+        FileUploadService.validate_file(file, 'brochure')
+        try:
+            result = cloudinary.uploader.upload(
+                file,
+                folder=f"stephotec/brochures/course_{course_id}",
+                resource_type="auto",
+            )
+            return result['secure_url']
+        except Exception as e:
+            raise ValidationError(f"Upload failed: {str(e)}")
+

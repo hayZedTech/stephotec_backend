@@ -8,6 +8,7 @@ from .views import (
     CertificateViewSet,
     HandoutViewSet,
     HandoutPurchaseViewSet,
+    BrochureViewSet,
     NotificationViewSet,
     MessageViewSet,
     StudentLearningContentViewSet,
@@ -24,6 +25,7 @@ router.register(r"attendance", AttendanceViewSet, basename="attendance")
 router.register(r"certificates", CertificateViewSet, basename="certificate")
 router.register(r"handouts", HandoutViewSet, basename="handout")
 router.register(r"handout-purchases", HandoutPurchaseViewSet, basename="handout-purchase")
+router.register(r"brochures", BrochureViewSet, basename="brochure")
 router.register(r"notifications", NotificationViewSet, basename="notification")
 router.register(r"messages", MessageViewSet, basename="message")
 router.register(r"student-learning-content", StudentLearningContentViewSet, basename="student-learning-content")
