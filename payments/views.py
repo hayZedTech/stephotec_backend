@@ -11,12 +11,14 @@ from rest_framework.response import Response
 from accounts.models import StudentCourse, User
 from accounts.permissions import IsAdminUserRole
 
-from .models import Payment, PaymentEntry
+from .models import Payment, PaymentEntry, SchoolBankAccount
 from .serializers import (
     PaymentSerializer,
     PaymentEntrySerializer,
     StudentPaymentSummarySerializer,
+    SchoolBankAccountSerializer,
 )
+from notifications.services import send_student_notification
 
 
 class PaymentViewSet(
@@ -73,6 +75,17 @@ class PaymentViewSet(
         total = sum(e.amount for e in payment.entries.all())
         payment.amount_paid = total
         payment.save()
+
+        # Send notification to student
+        student = payment.student_course.student
+        course_name = payment.student_course.course.name
+        send_student_notification(
+            student=student,
+            title="Payment Recorded",
+            message=f"A payment of ₦{entry.amount:,.2f} for '{course_name}' was recorded. Total Paid: ₦{payment.amount_paid:,.2f} (Status: {payment.status}).",
+            notification_type="SUCCESS",
+            created_by=request.user,
+        )
 
         return Response(PaymentEntrySerializer(entry).data, status=201)
 
@@ -175,3 +188,40 @@ class PaymentViewSet(
         )
 
         return Response(serializer.data)
+
+
+class SchoolBankAccountViewSet(viewsets.ModelViewSet):
+    """CRUD for school bank accounts.
+    - Admin: full CRUD
+    - Students / authenticated users: list & retrieve active accounts only
+    """
+
+    serializer_class = SchoolBankAccountSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == "ADMIN":
+            return SchoolBankAccount.objects.all()
+        return SchoolBankAccount.objects.filter(is_active=True)
+
+    def _require_admin(self):
+        from rest_framework.exceptions import PermissionDenied
+        if self.request.user.role != "ADMIN":
+            raise PermissionDenied("Only admins can perform this action.")
+
+    def create(self, request, *args, **kwargs):
+        self._require_admin()
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        self._require_admin()
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        self._require_admin()
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        self._require_admin()
+        return super().destroy(request, *args, **kwargs)

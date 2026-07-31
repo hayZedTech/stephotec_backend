@@ -1,5 +1,15 @@
 from rest_framework import serializers
-from .models import Payment, PaymentEntry
+from .models import Payment, PaymentEntry, SchoolBankAccount
+
+
+class SchoolBankAccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SchoolBankAccount
+        fields = [
+            "id", "bank_name", "account_name", "account_number",
+            "description", "is_active", "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class PaymentEntrySerializer(serializers.ModelSerializer):

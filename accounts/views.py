@@ -22,6 +22,7 @@ from .serializers import (
     StudentCourseSerializer,
 )
 from .services import FileUploadService
+from notifications.services import send_student_notification
 
 User = get_user_model()
 
@@ -166,6 +167,13 @@ class AdminStudentManagementViewSet(
             "CREATE",
             {"email": student.email, "username": student.username},
         )
+        send_student_notification(
+            student=student,
+            title="Welcome to Stephotec Portal!",
+            message=f"Hello {student.first_name or student.username}, your student account has been created. Temporary password: {temporary_password}",
+            notification_type="SUCCESS",
+            created_by=request.user,
+        )
         return Response(
             {
                 "message": "Student account provisioned successfully.",
@@ -289,6 +297,13 @@ class StudentCourseViewSet(viewsets.ModelViewSet):
             "ADD_COURSE",
             {"course": course_enrollment.course.name},
         )
+        send_student_notification(
+            student=student,
+            title="New Course Enrollment",
+            message=f"You have been enrolled in '{course_enrollment.course.name}'. Check your dashboard to access course materials.",
+            notification_type="INFO",
+            created_by=request.user,
+        )
         
         return Response(
             serializer.data,
@@ -308,6 +323,13 @@ class StudentCourseViewSet(viewsets.ModelViewSet):
             course_enrollment.student,
             "UPDATE_COURSE",
             {"course": course_enrollment.course.name, "status": course_enrollment.status},
+        )
+        send_student_notification(
+            student=course_enrollment.student,
+            title="Course Status Updated",
+            message=f"Your course status for '{course_enrollment.course.name}' has been updated to {course_enrollment.status}.",
+            notification_type="INFO",
+            created_by=self.request.user,
         )
     
     def destroy(self, request, *args, **kwargs):

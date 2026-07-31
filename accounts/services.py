@@ -12,6 +12,10 @@ class FileUploadService:
         'document': 20 * 1024 * 1024,
         'project': 50 * 1024 * 1024,
         'learning_material': 50 * 1024 * 1024,
+        'certificate': 10 * 1024 * 1024,
+        'handout': 20 * 1024 * 1024,
+        'assignment': 20 * 1024 * 1024,
+        'submission': 20 * 1024 * 1024,
     }
     
     ALLOWED_EXTENSIONS = {
@@ -19,7 +23,11 @@ class FileUploadService:
         'course_thumbnail': {'jpg', 'jpeg', 'png', 'webp'},
         'document': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'},
         'project': {'zip', 'rar', '7z'},
-        'learning_material': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv'},
+        'learning_material': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv', 'png', 'jpg', 'jpeg', 'webp', 'zip'},
+        'certificate': {'pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx'},
+        'handout': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'zip', 'rar'},
+        'assignment': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'zip', 'rar'},
+        'submission': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'zip', 'rar'},
     }
     
     @staticmethod
@@ -132,12 +140,12 @@ class FileUploadService:
     @staticmethod
     def upload_submission(file, student_id):
         """Upload assignment submission to Cloudinary (20MB max)"""
-        FileUploadService.validate_file(file, 'document')
+        FileUploadService.validate_file(file, 'submission')
         try:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/submissions/student_{student_id}",
-                resource_type="raw",
+                resource_type="auto",
             )
             return result['secure_url']
         except Exception as e:
@@ -146,13 +154,13 @@ class FileUploadService:
     @staticmethod
     def upload_certificate(file, cert_id):
         """Upload certificate file to Cloudinary (10MB max)"""
-        FileUploadService.validate_file(file, 'document')
+        FileUploadService.validate_file(file, 'certificate')
         try:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/certificates",
                 public_id=f"cert_{cert_id}_{int(__import__('time').time())}",
-                resource_type="raw",
+                resource_type="auto",
             )
             return result['secure_url']
         except Exception as e:
@@ -161,12 +169,12 @@ class FileUploadService:
     @staticmethod
     def upload_handout(file, course_id):
         """Upload handout file to Cloudinary (20MB max)"""
-        FileUploadService.validate_file(file, 'document')
+        FileUploadService.validate_file(file, 'handout')
         try:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/handouts/course_{course_id}",
-                resource_type="raw",
+                resource_type="auto",
             )
             return result['secure_url']
         except Exception as e:
@@ -174,13 +182,13 @@ class FileUploadService:
 
     @staticmethod
     def upload_assignment(file, course_id):
-        """Upload assignment instruction file to Cloudinary (10MB max)"""
-        FileUploadService.validate_file(file, 'document')
+        """Upload assignment instruction file to Cloudinary (20MB max)"""
+        FileUploadService.validate_file(file, 'assignment')
         try:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/assignments/course_{course_id}",
-                resource_type="raw",
+                resource_type="auto",
             )
             return result['secure_url']
         except Exception as e:

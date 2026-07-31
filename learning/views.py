@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from accounts.services import FileUploadService
 from notifications.models import AdminAlert
+from notifications.services import send_student_notification, send_bulk_student_notifications
 from .models import (
     LearningContent,
     Assignment,
@@ -171,6 +172,15 @@ class AssignmentSubmissionViewSet(viewsets.ModelViewSet):
         submission.graded_by = request.user
         submission.save()
 
+        # Send notification to student
+        send_student_notification(
+            student=submission.student,
+            title="Assignment Graded",
+            message=f"Your submission for '{submission.assignment.title}' has been graded. Score: {score}/{submission.assignment.max_score}." + (f" Feedback: {feedback}" if feedback else ""),
+            notification_type="SUCCESS",
+            created_by=request.user,
+        )
+
         return Response(
             AssignmentSubmissionSerializer(submission).data,
             status=status.HTTP_200_OK,
@@ -286,6 +296,15 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         attendance.approved_by = request.user
         attendance.approved_at = timezone.now()
         attendance.save()
+
+        send_student_notification(
+            student=attendance.student_course.student,
+            title="Attendance Approved",
+            message=f"Your attendance for {attendance.date} in '{attendance.student_course.course.name}' has been approved.",
+            notification_type="SUCCESS",
+            created_by=request.user,
+        )
+
         return Response(AttendanceSerializer(attendance).data)
 
     @action(detail=True, methods=["post"], url_path="reject")
@@ -297,6 +316,15 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         attendance.approved_at = timezone.now()
         attendance.remarks = request.data.get("remarks", attendance.remarks)
         attendance.save()
+
+        send_student_notification(
+            student=attendance.student_course.student,
+            title="Attendance Rejected",
+            message=f"Your attendance for {attendance.date} in '{attendance.student_course.course.name}' was rejected." + (f" Reason: {attendance.remarks}" if attendance.remarks else ""),
+            notification_type="WARNING",
+            created_by=request.user,
+        )
+
         return Response(AttendanceSerializer(attendance).data)
 
     @action(detail=False, methods=["get"], url_path="pending")
@@ -318,9 +346,15 @@ class CertificateViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == "ADMIN":
-            return Certificate.objects.all()
-        return Certificate.objects.filter(student_course__student=user)
+        qs = Certificate.objects.all() if user.role == "ADMIN" else Certificate.objects.filter(student_course__student=user)
+        student_id = (
+            self.request.query_params.get("student_id")
+            or self.request.query_params.get("student_course__student")
+            or self.request.query_params.get("student")
+        )
+        if student_id:
+            qs = qs.filter(student_course__student_id=student_id)
+        return qs
 
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
@@ -330,6 +364,17 @@ class CertificateViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         instance = serializer.save()
+
+        # Send notification to student
+        student = instance.student_course.student
+        send_student_notification(
+            student=student,
+            title="New Certificate Earned!",
+            message=f"You have earned a new certificate: '{instance.title}' ({instance.certificate_number}) for {instance.student_course.course.name}.",
+            notification_type="SUCCESS",
+            created_by=request.user,
+        )
+
         return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
 
     def partial_update(self, request, *args, **kwargs):
@@ -350,6 +395,15 @@ class CertificateViewSet(viewsets.ModelViewSet):
         certificate.issued_date = timezone.now().date()
         certificate.issued_by = request.user
         certificate.save()
+
+        student = certificate.student_course.student
+        send_student_notification(
+            student=student,
+            title="Certificate Issued!",
+            message=f"Congratulations! Your certificate '{certificate.title}' ({certificate.certificate_number}) for {certificate.student_course.course.name} has been officially issued. You can now download it from your Learning Portal.",
+            notification_type="SUCCESS",
+            created_by=request.user,
+        )
 
         return Response(
             CertificateSerializer(certificate).data, status=status.HTTP_200_OK
@@ -404,9 +458,11 @@ class HandoutPurchaseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == "ADMIN":
-            return HandoutPurchase.objects.all()
-        return HandoutPurchase.objects.filter(student=user)
+        qs = HandoutPurchase.objects.all() if user.role == "ADMIN" else HandoutPurchase.objects.filter(student=user)
+        student_id = self.request.query_params.get("student_id") or self.request.query_params.get("student")
+        if student_id:
+            qs = qs.filter(student_id=student_id)
+        return qs
 
     @action(detail=False, methods=["post"])
     def purchase(self, request):
@@ -426,23 +482,82 @@ class HandoutPurchaseViewSet(viewsets.ModelViewSet):
         existing = HandoutPurchase.objects.filter(
             handout=handout, student=request.user
         ).first()
-        if existing and existing.status == "COMPLETED":
-            return Response(
-                {"detail": "You have already purchased this handout"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if existing:
+            if existing.status == "COMPLETED":
+                return Response(
+                    {"detail": "You have already acquired this handout."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if existing.status == "PENDING":
+                return Response(
+                    HandoutPurchaseSerializer(existing).data,
+                    status=status.HTTP_200_OK,
+                )
 
+        txn_id = f"REQ_{handout.id}_{request.user.id}_{int(timezone.now().timestamp())}"
         purchase = HandoutPurchase.objects.create(
             handout=handout,
             student=request.user,
             amount_paid=handout.price,
-            status="COMPLETED",
-            transaction_id=f"TXN_{handout.id}_{request.user.id}_{timezone.now().timestamp()}",
+            status="PENDING",
+            transaction_id=txn_id,
+        )
+
+        # Notify student: their request is pending
+        send_student_notification(
+            student=request.user,
+            title="Handout Request Received",
+            message=f"Your request for '{handout.title}' (₦{handout.price:,.2f}) has been received and is pending payment confirmation. Please make payment to the provided bank account.",
+        )
+
+        # Notify all admins about the new request
+        admin_users = list(User.objects.filter(role="ADMIN"))
+        student_name = request.user.get_full_name() or request.user.username
+        send_bulk_student_notifications(
+            students=admin_users,
+            title="New Handout Payment Request",
+            message=f"{student_name} ({request.user.username}) has requested '{handout.title}' (₦{handout.price:,.2f}). Please confirm payment and approve.",
         )
 
         return Response(
             HandoutPurchaseSerializer(purchase).data, status=status.HTTP_201_CREATED
         )
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAdminUserRole])
+    def approve(self, request, pk=None):
+        purchase = self.get_object()
+        purchase.status = "COMPLETED"
+        purchase.save()
+
+        # Create StudentHandout link
+        StudentHandout.objects.get_or_create(
+            student=purchase.student, handout=purchase.handout
+        )
+
+        # Notify student of approval
+        send_student_notification(
+            student=purchase.student,
+            title="Handout Payment Approved! ✅",
+            message=f"Your payment for '{purchase.handout.title}' has been confirmed and approved. You can now access and download it from your Learning Portal.",
+            created_by=request.user,
+        )
+
+        return Response(HandoutPurchaseSerializer(purchase).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAdminUserRole])
+    def reject(self, request, pk=None):
+        purchase = self.get_object()
+        purchase.status = "FAILED"
+        purchase.save()
+
+        send_student_notification(
+            student=purchase.student,
+            title="Handout Request Not Approved",
+            message=f"Your payment request for '{purchase.handout.title}' was not confirmed. Please contact support if you believe this is an error.",
+            created_by=request.user,
+        )
+
+        return Response(HandoutPurchaseSerializer(purchase).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])
     def download(self, request, pk=None):
@@ -590,9 +705,17 @@ class StudentLearningContentViewSet(viewsets.ModelViewSet):
                 course_id=content.course_id
             )
             for student_course in student_courses:
-                StudentLearningContent.objects.get_or_create(
+                item, created = StudentLearningContent.objects.get_or_create(
                     student_course=student_course, learning_content=content
                 )
+                if created:
+                    send_student_notification(
+                        student=student_course.student,
+                        title="New Learning Material Assigned",
+                        message=f"New material '{content.title}' ({content.content_type}) has been assigned to you in {content.course.name}.",
+                        notification_type="INFO",
+                        created_by=request.user,
+                    )
                 created_count += 1
 
         return Response(
@@ -641,16 +764,19 @@ class StudentLearningContentViewSet(viewsets.ModelViewSet):
         student_id = request.query_params.get("student_id")
         course_id = request.query_params.get("course_id")
 
-        if not student_id or not course_id:
+        if not student_id:
             return Response(
-                {"detail": "student_id and course_id are required"},
+                {"detail": "student_id is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         assignments = StudentLearningContent.objects.filter(
-            student_course__student_id=student_id,
-            student_course__course_id=course_id
-        ).select_related("learning_content", "learning_content__course", "student_course")
+            student_course__student_id=student_id
+        )
+        if course_id:
+            assignments = assignments.filter(student_course__course_id=course_id)
+
+        assignments = assignments.select_related("learning_content", "learning_content__course", "student_course")
 
         serializer = self.get_serializer(assignments, many=True)
         return Response(serializer.data)
@@ -690,9 +816,17 @@ class StudentAssignmentViewSet(viewsets.ModelViewSet):
         for student_id in student_ids:
             try:
                 student = User.objects.get(id=student_id)
-                StudentAssignment.objects.get_or_create(
+                item, created = StudentAssignment.objects.get_or_create(
                     student=student, assignment=assignment
                 )
+                if created:
+                    send_student_notification(
+                        student=student,
+                        title="New Assignment Assigned",
+                        message=f"You have been assigned '{assignment.title}' in {assignment.course.name}. Due date: {assignment.due_date or 'N/A'}.",
+                        notification_type="INFO",
+                        created_by=request.user,
+                    )
                 created_count += 1
             except User.DoesNotExist:
                 continue
@@ -785,9 +919,17 @@ class StudentCertificateViewSet(viewsets.ModelViewSet):
         for student_id in student_ids:
             try:
                 student = User.objects.get(id=student_id)
-                StudentCertificate.objects.get_or_create(
+                item, created = StudentCertificate.objects.get_or_create(
                     student=student, certificate=certificate
                 )
+                if created:
+                    send_student_notification(
+                        student=student,
+                        title="Certificate Assigned",
+                        message=f"Certificate '{certificate.title}' ({certificate.certificate_number}) has been assigned to you.",
+                        notification_type="SUCCESS",
+                        created_by=request.user,
+                    )
                 created_count += 1
             except User.DoesNotExist:
                 continue
@@ -849,9 +991,17 @@ class StudentHandoutViewSet(viewsets.ModelViewSet):
         for student_id in student_ids:
             try:
                 student = User.objects.get(id=student_id)
-                StudentHandout.objects.get_or_create(
+                item, created = StudentHandout.objects.get_or_create(
                     student=student, handout=handout
                 )
+                if created:
+                    send_student_notification(
+                        student=student,
+                        title="New Study Handout Available",
+                        message=f"Study handout '{handout.title}' for {handout.course.name} is now available.",
+                        notification_type="INFO",
+                        created_by=request.user,
+                    )
                 created_count += 1
             except User.DoesNotExist:
                 continue

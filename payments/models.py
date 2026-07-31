@@ -105,3 +105,28 @@ class PaymentEntry(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
+
+
+class SchoolBankAccount(models.Model):
+    """Bank accounts the school uses to receive payments from students."""
+
+    bank_name = models.CharField(max_length=100)
+    account_name = models.CharField(max_length=200)
+    account_number = models.CharField(max_length=30)
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional label, e.g. 'Course Fees', 'Handouts'",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Inactive accounts are hidden from students",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["bank_name", "account_name"]
+
+    def __str__(self):
+        return f"{self.bank_name} — {self.account_name} ({self.account_number})"
