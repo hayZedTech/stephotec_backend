@@ -13,6 +13,7 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AuditLog.objects.all()
     serializer_class = AuditLogSerializer
     permission_classes = [IsAdmin]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ["action", "timestamp"]
     search_fields = ["changes", "path", "actor__username", "actor__email"]

@@ -11,6 +11,7 @@ from .views import (
     StudentProfileActivationView,
     ChangePasswordView,
     FileUploadView,
+    PublicStudentVerifyView,
 )
 
 router = DefaultRouter()
@@ -37,6 +38,7 @@ urlpatterns = [
     path('student/profile-page/', StudentProfilePageView.as_view(), name='student_profile_page'),
     path('student/activate-profile/', StudentProfileActivationView.as_view(), name='student_activate_profile'),
     path('student/change-password/', ChangePasswordView.as_view(), name='change_password'),
+    path('student/verify/', PublicStudentVerifyView.as_view(), name='student_verify'),
     # File Upload
     path('upload/profile-picture/', FileUploadView.as_view(), name='upload_profile_picture'),
 ]

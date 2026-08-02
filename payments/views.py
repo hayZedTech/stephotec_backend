@@ -29,6 +29,7 @@ class PaymentViewSet(
 ):
     serializer_class = PaymentSerializer
     permission_classes = [IsAdminUserRole]
+    pagination_class = None
 
     def get_queryset(self):
         return Payment.objects.select_related(
@@ -198,6 +199,7 @@ class SchoolBankAccountViewSet(viewsets.ModelViewSet):
 
     serializer_class = SchoolBankAccountSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):
         user = self.request.user

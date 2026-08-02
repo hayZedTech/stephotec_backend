@@ -53,6 +53,7 @@ User = get_user_model()
 class LearningContentViewSet(viewsets.ModelViewSet):
     serializer_class = LearningContentSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["course", "content_type", "is_published"]
     search_fields = ["title", "description"]
@@ -101,6 +102,7 @@ class LearningContentViewSet(viewsets.ModelViewSet):
 class AssignmentViewSet(viewsets.ModelViewSet):
     serializer_class = AssignmentSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["course", "status"]
     search_fields = ["title", "description"]
@@ -139,6 +141,7 @@ class AssignmentViewSet(viewsets.ModelViewSet):
 class AssignmentSubmissionViewSet(viewsets.ModelViewSet):
     serializer_class = AssignmentSubmissionSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["assignment", "student", "status"]
     ordering_fields = ["submitted_at", "score"]
@@ -357,6 +360,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 class CertificateViewSet(viewsets.ModelViewSet):
     serializer_class = CertificateSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["student_course", "status"]
     ordering_fields = ["earned_date"]
@@ -431,6 +435,7 @@ class CertificateViewSet(viewsets.ModelViewSet):
 class HandoutViewSet(viewsets.ModelViewSet):
     serializer_class = HandoutSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["course", "status"]
     search_fields = ["title", "description"]
@@ -469,6 +474,7 @@ class HandoutViewSet(viewsets.ModelViewSet):
 class BrochureViewSet(viewsets.ModelViewSet):
     serializer_class = BrochureSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["course"]
     search_fields = ["title", "description"]
@@ -517,6 +523,7 @@ class BrochureViewSet(viewsets.ModelViewSet):
 class HandoutPurchaseViewSet(viewsets.ModelViewSet):
     serializer_class = HandoutPurchaseSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ["handout", "student", "status"]
     ordering_fields = ["purchased_at"]

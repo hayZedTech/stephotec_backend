@@ -22,6 +22,7 @@ class AdminAlertViewSet(viewsets.ReadOnlyModelViewSet):
     """Admin-only inbox for system-generated alerts."""
     serializer_class = AdminAlertSerializer
     permission_classes = [IsAdminUserRole]
+    pagination_class = None
 
     def get_queryset(self):
         return AdminAlert.objects.all()

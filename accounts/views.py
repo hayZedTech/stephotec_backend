@@ -1,3 +1,4 @@
+from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import status, mixins, viewsets, filters
@@ -46,6 +47,7 @@ def log_action(user, target, action, changes=None):
 class CourseViewSet(viewsets.ModelViewSet):
     serializer_class = CourseSerializer
     permission_classes = [IsAdminUserRole]
+    pagination_class = None
     queryset = Course.objects.all().order_by("-created_at")
     filter_backends = [
         DjangoFilterBackend,
@@ -113,6 +115,7 @@ class AdminStudentManagementViewSet(
 ):
     serializer_class = AdminStudentCreationSerializer
     permission_classes = [IsAdminUserRole]
+    pagination_class = None
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
@@ -499,3 +502,49 @@ class FileUploadView(APIView):
                 {"detail": str(e)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+
+class PublicStudentVerifyView(APIView):
+    """Public endpoint to verify a student ID / username without authentication"""
+    permission_classes = []
+
+    @extend_schema(summary="Public student verification endpoint")
+    def get(self, request):
+        query = request.query_params.get("query") or request.query_params.get("student") or request.query_params.get("id")
+        if not query:
+            return Response({"detail": "Verification query parameter required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        query = query.strip()
+        student = User.objects.filter(role=User.Role.STUDENT).filter(
+            models.Q(username__iexact=query) | models.Q(email__iexact=query)
+        ).first()
+
+        if not student:
+            return Response(
+                {
+                    "is_verified": False,
+                    "detail": f"No official student record found matching '{query}'.",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        primary_course = student.courses.filter(is_primary=True).first()
+        course_name = primary_course.course.name if primary_course else (student.courses.first().course.name if student.courses.exists() else "Computer Studies")
+
+        return Response(
+            {
+                "is_verified": True,
+                "full_name": student.get_full_name() or student.username,
+                "first_name": student.first_name,
+                "last_name": student.last_name,
+                "username": student.username,
+                "status": student.status,
+                "primary_course": course_name,
+                "admission_year": student.admission_year,
+                "profile_picture_url": student.profile_picture_url,
+                "verification_date": timezone.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "institution": "Stephotec Computer Technologies Ltd",
+            },
+            status=status.HTTP_200_OK,
+        )
+
