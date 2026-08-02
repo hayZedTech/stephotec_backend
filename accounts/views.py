@@ -27,6 +27,7 @@ from .serializers import (
     StudentProfileDetailSerializer,
     StudentProfilePageSerializer,
     StudentCourseSerializer,
+    AdminProfileUpdateSerializer,
 )
 from .services import FileUploadService
 from notifications.services import send_student_notification
@@ -770,4 +771,24 @@ class PublicStaffVerifyView(APIView):
         )
 
 
+class AdminProfileView(APIView):
+    """Allows the logged-in admin/staff user to view and update their own profile."""
+    permission_classes = [IsAuthenticated]
 
+    def get(self, request):
+        if request.user.role not in [User.Role.ADMIN]:
+            return Response({"detail": "Only admin users can access this endpoint."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = AdminProfileUpdateSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        if request.user.role not in [User.Role.ADMIN]:
+            return Response({"detail": "Only admin users can access this endpoint."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = AdminProfileUpdateSerializer(
+            instance=request.user,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.to_representation(request.user), status=status.HTTP_200_OK)

@@ -16,6 +16,7 @@ from .views import (
     ConfirmPasswordResetView,
     AdminStaffManagementViewSet,
     PublicStaffVerifyView,
+    AdminProfileView,
 )
 
 router = DefaultRouter()
@@ -49,4 +50,5 @@ urlpatterns = [
     path('staff/verify/', PublicStaffVerifyView.as_view(), name='staff_verify'),
     # File Upload
     path('upload/profile-picture/', FileUploadView.as_view(), name='upload_profile_picture'),
+    path('admin/profile/', AdminProfileView.as_view(), name='admin_profile'),
 ]

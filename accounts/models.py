@@ -181,6 +181,21 @@ class User(AbstractUser):
         ):
             self.username = self.generate_username()
 
+        # Auto-hash plain-text password if created/edited via Django admin
+        # Skip if: empty, already hashed, or Django's unusable password marker ('!')
+        if (
+            self.password
+            and not self.password.startswith(('pbkdf2_sha256$', 'pbkdf2_sha512$', 'argon2$', 'bcrypt$', 'sha1$', 'md5$', 'crypt$', '!'))
+        ):
+            self.set_password(self.password)
+
+        # Sync Django's is_active with our custom status field
+        # so users created via Django admin can log in without manual toggling
+        if self.status in (self.Status.ACTIVE, self.Status.GRADUATED):
+            self.is_active = True
+        elif self.status in (self.Status.SUSPENDED, self.Status.WITHDRAWN, self.Status.INACTIVE):
+            self.is_active = False
+
         super().save(*args, **kwargs)
 
 # Student Course

@@ -30,6 +30,10 @@ from .models import (
     StudentAssignment,
     StudentCertificate,
     StudentHandout,
+    Quiz,
+    QuizQuestion,
+    QuestionOption,
+    QuizAttempt,
 )
 from .serializers import (
     LearningContentSerializer,
@@ -46,6 +50,11 @@ from .serializers import (
     StudentAssignmentSerializer,
     StudentCertificateSerializer,
     StudentHandoutSerializer,
+    QuizSerializer,
+    QuizDetailSerializer,
+    QuizQuestionSerializer,
+    QuestionOptionSerializer,
+    QuizAttemptSerializer,
 )
 from accounts.permissions import IsAdminUserRole
 from accounts.models import StudentCourse
@@ -1169,4 +1178,230 @@ class PublicCertificateVerifyView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class QuizViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["course", "is_published", "level"]
+    search_fields = ["title", "description"]
+    ordering_fields = ["created_at"]
+    ordering = ["-created_at"]
+
+    def get_serializer_class(self):
+        if self.action in ["retrieve", "take"]:
+            return QuizDetailSerializer
+        return QuizSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == "ADMIN":
+            return Quiz.objects.all()
+        student_course_ids = user.courses.values_list("course_id", flat=True)
+        return Quiz.objects.filter(is_published=True, course_id__in=student_course_ids)
+
+    def create(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can create quizzes"}, status=status.HTTP_403_FORBIDDEN)
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can edit quizzes"}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can edit quizzes"}, status=status.HTTP_403_FORBIDDEN)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can delete quizzes"}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["delete"], url_path="delete-all-questions")
+    def delete_all_questions(self, request, pk=None):
+        """Delete all questions for a specific quiz"""
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can delete questions"}, status=status.HTTP_403_FORBIDDEN)
+        
+        quiz = self.get_object()
+        deleted_count, _ = quiz.questions.all().delete()
+        
+        return Response({"message": f"Successfully deleted {deleted_count} questions"}, status=status.HTTP_200_OK)
+
+
+    @action(detail=True, methods=["post"], url_path="bulk-questions")
+    def bulk_questions(self, request, pk=None):
+        """Bulk create questions and options for a quiz"""
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can add questions"}, status=status.HTTP_403_FORBIDDEN)
+
+        quiz = self.get_object()
+        questions_data = request.data.get("questions", [])
+
+        if not isinstance(questions_data, list) or len(questions_data) == 0:
+            return Response({"detail": "questions payload must be a non-empty list"}, status=status.HTTP_400_BAD_REQUEST)
+
+        created_count = 0
+        current_order = quiz.questions.count() + 1
+
+        for q_item in questions_data:
+            q_text = q_item.get("question_text", "").strip()
+            if not q_text:
+                continue
+
+            question = QuizQuestion.objects.create(
+                quiz=quiz,
+                question_text=q_text,
+                explanation=q_item.get("explanation", "").strip(),
+                points=int(q_item.get("points", 1)),
+                order=current_order,
+            )
+            current_order += 1
+
+            options_data = q_item.get("options", [])
+            for opt_idx, opt_item in enumerate(options_data):
+                if isinstance(opt_item, str):
+                    opt_text = opt_item.strip()
+                    is_correct = (opt_idx == 0)
+                else:
+                    opt_text = opt_item.get("option_text", "").strip()
+                    is_correct = bool(opt_item.get("is_correct", False))
+
+                if opt_text:
+                    QuestionOption.objects.create(
+                        question=question,
+                        option_text=opt_text,
+                        is_correct=is_correct,
+                    )
+
+            created_count += 1
+
+        return Response({
+            "message": f"Successfully created {created_count} questions for quiz '{quiz.title}'!",
+            "quiz_id": quiz.id,
+            "created_count": created_count,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="submit")
+    def submit(self, request, pk=None):
+        """Submit interactive quiz answers, evaluate score instantly, record QuizAttempt, and return scorecard breakdown."""
+        quiz = self.get_object()
+        user_answers = request.data.get("answers", {})
+        assigned_question_ids = request.data.get("question_ids", [])
+
+        if assigned_question_ids and isinstance(assigned_question_ids, list):
+            questions = quiz.questions.filter(id__in=assigned_question_ids).prefetch_related("options")
+        else:
+            questions = quiz.questions.all().prefetch_related("options")
+
+        total_questions = questions.count()
+
+        if total_questions == 0:
+            return Response({"detail": "This quiz contains no questions yet or invalid question IDs were submitted."}, status=status.HTTP_400_BAD_REQUEST)
+
+        correct_count = 0
+        questions_feedback = []
+
+        for q in questions:
+            correct_option = q.options.filter(is_correct=True).first()
+            selected_option_id = user_answers.get(str(q.id)) or user_answers.get(q.id)
+
+            is_correct = False
+            selected_text = "No answer selected"
+
+            if selected_option_id:
+                selected_opt = q.options.filter(id=selected_option_id).first()
+                if selected_opt:
+                    selected_text = selected_opt.option_text
+                    if correct_option and selected_opt.id == correct_option.id:
+                        is_correct = True
+
+            if is_correct:
+                correct_count += 1
+
+            questions_feedback.append({
+                "question_id": q.id,
+                "question_text": q.question_text,
+                "selected_option_id": selected_option_id,
+                "selected_option_text": selected_text,
+                "correct_option_id": correct_option.id if correct_option else None,
+                "correct_option_text": correct_option.option_text if correct_option else "N/A",
+                "is_correct": is_correct,
+                "explanation": q.explanation or "No explanation provided.",
+            })
+
+        score_percentage = round((correct_count / total_questions) * 100, 2)
+        passed = score_percentage >= quiz.passing_score_percentage
+
+        attempt = QuizAttempt.objects.create(
+            quiz=quiz,
+            student=request.user,
+            score_percentage=score_percentage,
+            passed=passed,
+            total_questions=total_questions,
+            correct_answers_count=correct_count,
+            answers_data={
+                "feedback": questions_feedback,
+                "submitted_answers": user_answers,
+            }
+        )
+
+        return Response({
+            "message": "Quiz submitted successfully!",
+            "attempt_id": attempt.id,
+            "quiz_title": quiz.title,
+            "score_percentage": float(score_percentage),
+            "passed": passed,
+            "passing_score_percentage": quiz.passing_score_percentage,
+            "total_questions": total_questions,
+            "correct_answers_count": correct_count,
+            "completed_at": attempt.completed_at,
+            "questions_feedback": questions_feedback,
+        }, status=status.HTTP_201_CREATED)
+
+
+class QuizQuestionViewSet(viewsets.ModelViewSet):
+    serializer_class = QuizQuestionSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["quiz"]
+
+    def get_queryset(self):
+        return QuizQuestion.objects.all().order_by("order", "id")
+
+    def create(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can add questions"}, status=status.HTTP_403_FORBIDDEN)
+        return super().create(request, *args, **kwargs)
+
+
+class QuestionOptionViewSet(viewsets.ModelViewSet):
+    serializer_class = QuestionOptionSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        return QuestionOption.objects.all()
+
+    def create(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can add options"}, status=status.HTTP_403_FORBIDDEN)
+        return super().create(request, *args, **kwargs)
+
+
+class QuizAttemptViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = QuizAttemptSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == "ADMIN":
+            return QuizAttempt.objects.all()
+        return QuizAttempt.objects.filter(student=user)
 

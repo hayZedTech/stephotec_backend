@@ -13,6 +13,10 @@ from .models import (
     StudentAssignment,
     StudentCertificate,
     StudentHandout,
+    Quiz,
+    QuizQuestion,
+    QuestionOption,
+    QuizAttempt,
 )
 
 
@@ -116,3 +120,38 @@ class StudentHandoutAdmin(admin.ModelAdmin):
     list_filter = ["assigned_at", "handout__course"]
     search_fields = ["student__username", "handout__title"]
     readonly_fields = ["assigned_at"]
+
+
+class QuestionOptionInline(admin.TabularInline):
+    model = QuestionOption
+    extra = 4
+
+
+@admin.register(QuizQuestion)
+class QuizQuestionAdmin(admin.ModelAdmin):
+    list_display = ["quiz", "order", "question_text", "points"]
+    list_filter = ["quiz__course", "quiz"]
+    search_fields = ["question_text", "explanation"]
+    inlines = [QuestionOptionInline]
+
+
+class QuizQuestionInline(admin.StackedInline):
+    model = QuizQuestion
+    extra = 1
+
+
+@admin.register(Quiz)
+class QuizAdmin(admin.ModelAdmin):
+    list_display = ["title", "course", "duration_minutes", "passing_score_percentage", "is_published", "created_at"]
+    list_filter = ["course", "is_published", "created_at"]
+    search_fields = ["title", "description"]
+    inlines = [QuizQuestionInline]
+
+
+@admin.register(QuizAttempt)
+class QuizAttemptAdmin(admin.ModelAdmin):
+    list_display = ["quiz", "student", "score_percentage", "passed", "correct_answers_count", "total_questions", "completed_at"]
+    list_filter = ["passed", "quiz__course", "completed_at"]
+    search_fields = ["student__username", "quiz__title"]
+    readonly_fields = ["completed_at"]
+

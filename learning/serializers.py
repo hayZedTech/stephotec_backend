@@ -1,4 +1,5 @@
 from rest_framework import serializers
+import random
 from .models import (
     LearningContent,
     Assignment,
@@ -14,6 +15,10 @@ from .models import (
     StudentAssignment,
     StudentCertificate,
     StudentHandout,
+    Quiz,
+    QuizQuestion,
+    QuestionOption,
+    QuizAttempt,
 )
 
 
@@ -399,3 +404,107 @@ class StudentHandoutSerializer(serializers.ModelSerializer):
             "assigned_at",
         ]
         read_only_fields = ["id", "assigned_at"]
+
+
+class QuestionOptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuestionOption
+        fields = ["id", "question", "option_text", "is_correct"]
+
+
+class QuestionOptionPublicSerializer(serializers.ModelSerializer):
+    """Option serializer for active student test taking (hides is_correct)"""
+    class Meta:
+        model = QuestionOption
+        fields = ["id", "option_text"]
+
+
+class QuizQuestionSerializer(serializers.ModelSerializer):
+    options = QuestionOptionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = QuizQuestion
+        fields = ["id", "quiz", "question_text", "explanation", "points", "order", "options"]
+
+
+class QuizQuestionPublicSerializer(serializers.ModelSerializer):
+    """Question serializer for live test taking (hides answer explanation until submission)"""
+    options = QuestionOptionPublicSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = QuizQuestion
+        fields = ["id", "question_text", "points", "order", "options"]
+
+
+class QuizSerializer(serializers.ModelSerializer):
+    course_name = serializers.CharField(source="course.name", read_only=True)
+    course_code = serializers.CharField(source="course.code_prefix", read_only=True)
+    questions_count = serializers.IntegerField(source="questions.count", read_only=True)
+    total_points = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Quiz
+        fields = [
+            "id",
+            "course",
+            "course_name",
+            "course_code",
+            "title",
+            "description",
+            "level",
+            "duration_minutes",
+            "passing_score_percentage",
+            "display_questions_count",
+            "is_published",
+            "questions_count",
+            "total_points",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_total_points(self, obj):
+        return sum(q.points for q in obj.questions.all())
+
+
+class QuizDetailSerializer(QuizSerializer):
+    """Detailed quiz serializer with full questions and options for active test taking"""
+    questions = serializers.SerializerMethodField()
+
+    class Meta(QuizSerializer.Meta):
+        fields = QuizSerializer.Meta.fields + ["questions"]
+
+    def get_questions(self, obj):
+        all_questions = list(obj.questions.all().prefetch_related('options'))
+        if obj.display_questions_count and obj.display_questions_count > 0 and obj.display_questions_count < len(all_questions):
+            selected_questions = random.sample(all_questions, obj.display_questions_count)
+        else:
+            selected_questions = all_questions
+            # Still randomize order even if we show all
+            random.shuffle(selected_questions)
+            
+        return QuizQuestionPublicSerializer(selected_questions, many=True).data
+
+
+class QuizAttemptSerializer(serializers.ModelSerializer):
+    quiz_title = serializers.CharField(source="quiz.title", read_only=True)
+    course_name = serializers.CharField(source="quiz.course.name", read_only=True)
+    student_name = serializers.CharField(source="student.get_full_name", read_only=True)
+
+    class Meta:
+        model = QuizAttempt
+        fields = [
+            "id",
+            "quiz",
+            "quiz_title",
+            "course_name",
+            "student",
+            "student_name",
+            "score_percentage",
+            "passed",
+            "total_questions",
+            "correct_answers_count",
+            "answers_data",
+            "completed_at",
+        ]
+        read_only_fields = ["id", "completed_at"]
+

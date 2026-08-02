@@ -452,3 +452,115 @@ class Brochure(models.Model):
     def __str__(self):
         return f"{self.course.name} - {self.title}"
 
+
+class Quiz(models.Model):
+    """Interactive quiz or practice test for a course"""
+    class Level(models.TextChoices):
+        BEGINNER = "BEGINNER", "Beginner Level"
+        INTERMEDIATE = "INTERMEDIATE", "Intermediate Level"
+        ADVANCED = "ADVANCED", "Advanced Level"
+        GENERAL = "GENERAL", "General Practice"
+
+    course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name="quizzes"
+    )
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    level = models.CharField(
+        max_length=20,
+        choices=Level.choices,
+        default=Level.BEGINNER
+    )
+    duration_minutes = models.PositiveIntegerField(
+        default=15,
+        help_text="Test duration limit in minutes."
+    )
+    passing_score_percentage = models.PositiveIntegerField(
+        default=70,
+        help_text="Minimum score percentage required to pass."
+    )
+    display_questions_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Number of questions to randomly select. Leave blank to display all."
+    )
+    is_published = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name_plural = "Quizzes"
+
+    def __str__(self):
+        return f"{self.course.code_prefix} - {self.title}"
+
+
+class QuizQuestion(models.Model):
+    """Multiple choice question for a quiz"""
+    quiz = models.ForeignKey(
+        Quiz,
+        on_delete=models.CASCADE,
+        related_name="questions"
+    )
+    question_text = models.TextField()
+    explanation = models.TextField(
+        blank=True,
+        help_text="Detailed explanation of the correct answer shown after completion."
+    )
+    points = models.PositiveIntegerField(default=1)
+    order = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return f"{self.quiz.title} - Q{self.order}: {self.question_text[:50]}"
+
+
+class QuestionOption(models.Model):
+    """Answer choice for a quiz question"""
+    question = models.ForeignKey(
+        QuizQuestion,
+        on_delete=models.CASCADE,
+        related_name="options"
+    )
+    option_text = models.CharField(max_length=500)
+    is_correct = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.option_text} {'(Correct)' if self.is_correct else ''}"
+
+
+class QuizAttempt(models.Model):
+    """Student attempt record for a quiz"""
+    quiz = models.ForeignKey(
+        Quiz,
+        on_delete=models.CASCADE,
+        related_name="attempts"
+    )
+    student = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="quiz_attempts"
+    )
+    score_percentage = models.DecimalField(max_digits=5, decimal_places=2)
+    passed = models.BooleanField(default=False)
+    total_questions = models.PositiveIntegerField(default=0)
+    correct_answers_count = models.PositiveIntegerField(default=0)
+    answers_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="JSON payload storing student selected option IDs and question feedback."
+    )
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-completed_at"]
+
+    def __str__(self):
+        return f"{self.student.username} - {self.quiz.title} ({self.score_percentage}%)"
+
+

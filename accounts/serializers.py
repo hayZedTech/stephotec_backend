@@ -267,12 +267,21 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             password=password
         )
         if not authenticated_user:
+            # Check if user exists but is_active=False (common for Django admin-created accounts)
+            try:
+                raw_user = User.all_objects.get(username=username_to_auth)
+                if not raw_user.is_active:
+                    raise exceptions.AuthenticationFailed(
+                        "This account is not active. Please contact your administrator."
+                    )
+            except User.DoesNotExist:
+                pass
             raise exceptions.AuthenticationFailed(
-                "No active account found with the given credentials"
+                "No account found with the given credentials. Please check your username/email and password."
             )
         if not authenticated_user.is_active:
             raise exceptions.AuthenticationFailed(
-                "This account has been deactivated."
+                "This account has been deactivated. Please contact your administrator."
             )
         self.user = authenticated_user
         data = super().validate(attrs)
@@ -521,3 +530,32 @@ class AdminStaffSerializer(serializers.ModelSerializer):
         user.save()
         return user
 
+
+class AdminProfileUpdateSerializer(serializers.ModelSerializer):
+    """Allows admin/staff to update their own editable profile fields."""
+    class Meta:
+        model = User
+        fields = [
+            "first_name",
+            "last_name",
+            "phone",
+            "additional_phone",
+            "bio",
+            "address",
+            "job_title",
+        ]
+
+    def to_representation(self, instance):
+        return {
+            "first_name": instance.first_name,
+            "last_name": instance.last_name,
+            "phone": instance.phone,
+            "additional_phone": instance.additional_phone,
+            "bio": instance.bio,
+            "address": instance.address,
+            "job_title": instance.job_title,
+            "username": instance.username,
+            "email": instance.email,
+            "role": instance.role,
+            "profile_picture_url": instance.profile_picture_url,
+        }
