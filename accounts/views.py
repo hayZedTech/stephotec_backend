@@ -1,5 +1,9 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.conf import settings
 from django.utils import timezone
 from rest_framework import status, mixins, viewsets, filters
 from rest_framework.response import Response
@@ -7,6 +11,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework_simplejwt.views import TokenObtainPairView
+from notifications.email_service import EmailService
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from .models import User, Course, StudentCourse
@@ -177,6 +182,14 @@ class AdminStudentManagementViewSet(
             notification_type="SUCCESS",
             created_by=request.user,
         )
+        if student.email and temporary_password:
+            try:
+                frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+                activation_url = f"{frontend_url}/activate-profile"
+                EmailService.send_welcome_account_email(student, temporary_password, activation_url)
+            except Exception:
+                pass
+
         return Response(
             {
                 "message": "Student account provisioned successfully.",
@@ -547,4 +560,85 @@ class PublicStudentVerifyView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class RequestPasswordResetView(APIView):
+    """Public endpoint to request a password reset email."""
+    permission_classes = []
+
+    @extend_schema(summary="Request Password Reset Email")
+    def post(self, request):
+        query = request.data.get("email_or_username") or request.data.get("email") or request.data.get("username")
+        if not query:
+            return Response(
+                {"detail": "Email or Username is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        query = query.strip()
+        user = User.objects.filter(
+            models.Q(email__iexact=query) | models.Q(username__iexact=query)
+        ).first()
+
+        if user and user.email:
+            uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+            token = default_token_generator.make_token(user)
+            frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+            reset_url = f"{frontend_url}/reset-password?uid={uidb64}&token={token}"
+            EmailService.send_password_reset_email(user, reset_url)
+
+        return Response(
+            {
+                "message": "If an account with that email or username exists, password reset instructions have been sent to your email."
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ConfirmPasswordResetView(APIView):
+    """Public endpoint to confirm password reset with token."""
+    permission_classes = []
+
+    @extend_schema(summary="Confirm Password Reset")
+    def post(self, request):
+        uidb64 = request.data.get("uid")
+        token = request.data.get("token")
+        new_password = request.data.get("new_password")
+
+        if not uidb64 or not token or not new_password:
+            return Response(
+                {"detail": "uid, token, and new_password are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if len(new_password) < 6:
+            return Response(
+                {"detail": "Password must be at least 6 characters long."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response(
+                {"detail": "Invalid reset link or user does not exist."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not default_token_generator.check_token(user, token):
+            return Response(
+                {"detail": "Invalid or expired reset token. Please request a new password reset."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)
+        user.must_change_password = False
+        user.save()
+
+        return Response(
+            {"message": "Your password has been reset successfully. You may now log in with your new password."},
+            status=status.HTTP_200_OK,
+        )
+
 

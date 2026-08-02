@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from .models import Notification, NotificationRecipient, AdminAlert
+from .email_service import EmailService
 
 User = get_user_model()
 
@@ -7,7 +8,7 @@ User = get_user_model()
 def send_student_notification(student, title, message, notification_type=Notification.Type.INFO, created_by=None):
     """
     Sends a system notification to a specific student user,
-    which will be delivered to their student notifications feed.
+    delivers to their portal feed, and dispatches an email notification.
     """
     if not student:
         return None
@@ -29,6 +30,13 @@ def send_student_notification(student, title, message, notification_type=Notific
         notification=notification,
         recipient=student,
     )
+
+    # Also dispatch HTML email notification
+    try:
+        EmailService.send_notification_email(student, title, message)
+    except Exception:
+        pass
+
     return notification
 
 

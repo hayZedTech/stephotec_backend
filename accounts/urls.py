@@ -12,6 +12,8 @@ from .views import (
     ChangePasswordView,
     FileUploadView,
     PublicStudentVerifyView,
+    RequestPasswordResetView,
+    ConfirmPasswordResetView,
 )
 
 router = DefaultRouter()
@@ -34,6 +36,8 @@ urlpatterns = [
     # Core Authentication & Profile Activation Routes
     path('auth/login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('auth/password-reset/request/', RequestPasswordResetView.as_view(), name='password_reset_request'),
+    path('auth/password-reset/confirm/', ConfirmPasswordResetView.as_view(), name='password_reset_confirm'),
     path('student/profile/', StudentProfileView.as_view(), name='student_profile'),
     path('student/profile-page/', StudentProfilePageView.as_view(), name='student_profile_page'),
     path('student/activate-profile/', StudentProfileActivationView.as_view(), name='student_activate_profile'),
