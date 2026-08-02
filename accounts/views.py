@@ -518,7 +518,7 @@ class FileUploadView(APIView):
 
 
 class PublicStudentVerifyView(APIView):
-    """Public endpoint to verify a student ID / username without authentication"""
+    """Public endpoint to verify a student ID / enrollment ID / username without authentication"""
     permission_classes = []
 
     @extend_schema(summary="Public student verification endpoint")
@@ -527,10 +527,14 @@ class PublicStudentVerifyView(APIView):
         if not query:
             return Response({"detail": "Verification query parameter required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        query = query.strip()
-        student = User.objects.filter(role=User.Role.STUDENT).filter(
-            models.Q(username__iexact=query) | models.Q(email__iexact=query)
-        ).first()
+        query = query.strip().rstrip('/')
+        
+        # Search by username, email, or StudentCourse enrollment_id!
+        student = User.objects.filter(
+            models.Q(username__iexact=query) |
+            models.Q(email__iexact=query) |
+            models.Q(courses__enrollment_id__iexact=query)
+        ).distinct().first()
 
         if not student:
             return Response(
@@ -541,8 +545,9 @@ class PublicStudentVerifyView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        primary_course = student.courses.filter(is_primary=True).first()
-        course_name = primary_course.course.name if primary_course else (student.courses.first().course.name if student.courses.exists() else "Computer Studies")
+        primary_course = student.courses.filter(is_primary=True).first() or student.courses.first()
+        course_name = primary_course.course.name if primary_course else "Computer Studies"
+        student_id_display = primary_course.enrollment_id if primary_course else student.username
 
         return Response(
             {
@@ -550,10 +555,10 @@ class PublicStudentVerifyView(APIView):
                 "full_name": student.get_full_name() or student.username,
                 "first_name": student.first_name,
                 "last_name": student.last_name,
-                "username": student.username,
+                "username": student_id_display,
                 "status": student.status,
                 "primary_course": course_name,
-                "admission_year": student.admission_year,
+                "admission_year": primary_course.admission_year if primary_course else student.admission_year,
                 "profile_picture_url": student.profile_picture_url,
                 "verification_date": timezone.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "institution": "Stephotec Computer Technologies Ltd",

@@ -15,6 +15,7 @@ from .views import (
     StudentAssignmentViewSet,
     StudentCertificateViewSet,
     StudentHandoutViewSet,
+    PublicCertificateVerifyView,
 )
 
 router = DefaultRouter()
@@ -34,5 +35,6 @@ router.register(r"student-certificates", StudentCertificateViewSet, basename="st
 router.register(r"student-handouts", StudentHandoutViewSet, basename="student-handout")
 
 urlpatterns = [
+    path("certificates/verify/", PublicCertificateVerifyView.as_view(), name="certificate_verify"),
     path("", include(router.urls)),
 ]

@@ -1,8 +1,11 @@
+from django.db import models
 from rest_framework import viewsets, status, filters
+from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.utils import extend_schema
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from accounts.services import FileUploadService
@@ -1101,3 +1104,63 @@ class StudentHandoutViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(handouts, many=True)
         return Response(serializer.data)
+
+
+class PublicCertificateVerifyView(APIView):
+    """Public endpoint to verify a certificate by certificate_number or ID without authentication"""
+    permission_classes = []
+
+    @extend_schema(summary="Public certificate verification endpoint")
+    def get(self, request):
+        query = (
+            request.query_params.get("cert")
+            or request.query_params.get("number")
+            or request.query_params.get("id")
+            or request.query_params.get("query")
+        )
+        if not query:
+            return Response(
+                {"detail": "Verification query parameter required (e.g. ?cert=ST-CERT-2026-0001)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        query = query.strip()
+        certificate = Certificate.objects.filter(
+            models.Q(certificate_number__iexact=query) | models.Q(id=int(query) if query.isdigit() else -1)
+        ).select_related(
+            "student_course__student",
+            "student_course__course",
+            "issued_by",
+        ).first()
+
+        if not certificate:
+            return Response(
+                {
+                    "is_verified": False,
+                    "detail": f"No official certificate record found matching '{query}'.",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        student = certificate.student_course.student
+        course = certificate.student_course.course
+
+        return Response(
+            {
+                "is_verified": True,
+                "certificate_number": certificate.certificate_number,
+                "title": certificate.title,
+                "status": certificate.status,
+                "student_name": student.get_full_name() or student.username,
+                "student_id": student.username,
+                "course_name": course.name,
+                "earned_date": certificate.earned_date,
+                "issued_date": certificate.issued_date,
+                "file_url": certificate.file,
+                "issuer": certificate.issued_by.get_full_name() if certificate.issued_by else "Stephotec Academic Board",
+                "institution": "Stephotec Computer Technologies Ltd",
+                "verification_date": timezone.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            },
+            status=status.HTTP_200_OK,
+        )
+
