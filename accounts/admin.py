@@ -1,31 +1,29 @@
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import User, Course, StudentCourse
 
 
-class StudentCourseInline(admin.TabularInline):
-    model = StudentCourse
-    extra = 0
-    readonly_fields = ("student_id",)
-    autocomplete_fields = ("course",)
-
-
 @admin.register(User)
-class UserAdmin(BaseUserAdmin):
-
+class UserAdmin(admin.ModelAdmin):
     list_display = (
         "username",
+        "first_name",
+        "last_name",
         "email",
         "role",
         "status",
-        "is_profile_complete",
-        "created_at",
+        "is_superuser",
+        "is_staff",
+        "is_active",
+        "date_joined",
     )
 
     list_filter = (
         "role",
         "status",
-        "is_profile_complete",
+        "is_superuser",
+        "is_staff",
+        "is_active",
+        "is_industrial_training",
     )
 
     search_fields = (
@@ -33,6 +31,7 @@ class UserAdmin(BaseUserAdmin):
         "email",
         "first_name",
         "last_name",
+        "phone",
     )
 
     readonly_fields = (
@@ -41,45 +40,12 @@ class UserAdmin(BaseUserAdmin):
         "date_joined",
     )
 
-    inlines = [StudentCourseInline]
-
-    fieldsets = (
-        (None, {"fields": ("username", "password")}),
-        ("Personal", {"fields": ("first_name", "last_name", "email", "bio")}),
-        ("Student", {"fields": ("role", "status", "is_industrial_training", "is_profile_complete")}),
-        ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
-        ("Dates", {"fields": ("last_login", "date_joined", "created_at")}),
-    )
-
-    add_fieldsets = (
-        (
-            None,
-            {
-                "classes": ("wide",),
-                "fields": (
-                    "role",
-                    "username",
-                    "email",
-                    "first_name",
-                    "last_name",
-                    "status",
-                    "password1",
-                    "password2",
-                ),
-            },
-        ),
-    )
-
-    def get_readonly_fields(self, request, obj=None):
-        readonly = list(super().get_readonly_fields(request, obj))
-        if obj and obj.role == User.Role.STUDENT:
-            readonly.extend(["username", "role"])
-        return readonly
+    ordering = ("-date_joined",)
 
 
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ("name", "code_prefix", "is_active", "created_at")
+    list_display = ("name", "code_prefix", "default_fee", "is_active", "created_at")
     list_filter = ("is_active",)
     search_fields = ("name", "code_prefix")
 
@@ -89,7 +55,7 @@ class StudentCourseAdmin(admin.ModelAdmin):
     list_display = (
         "student",
         "course",
-        "student_id",
+        "enrollment_id",
         "status",
         "admission_year",
         "is_primary",
@@ -104,7 +70,8 @@ class StudentCourseAdmin(admin.ModelAdmin):
         "student__first_name",
         "student__last_name",
         "student__email",
-        "student_id",
+        "student__username",
+        "enrollment_id",
     )
     autocomplete_fields = (
         "student",

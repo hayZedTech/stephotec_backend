@@ -20,6 +20,7 @@ from .permissions import IsAdminUserRole
 from .serializers import (
     CourseSerializer,
     AdminStudentCreationSerializer,
+    AdminStaffSerializer,
     CustomTokenObtainPairSerializer,
     StudentProfileActivationSerializer,
     StudentProfileUpdateSerializer,
@@ -645,5 +646,89 @@ class ConfirmPasswordResetView(APIView):
             {"message": "Your password has been reset successfully. You may now log in with your new password."},
             status=status.HTTP_200_OK,
         )
+
+
+class AdminStaffManagementViewSet(viewsets.ModelViewSet):
+    """ViewSet to list, create, update, and delete Admin / Staff users."""
+    serializer_class = AdminStaffSerializer
+    permission_classes = [IsAdminUserRole]
+    pagination_class = None
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["username", "first_name", "last_name", "email", "phone"]
+    ordering_fields = ["username", "first_name", "last_name", "date_joined"]
+    ordering = ["-date_joined"]
+
+    def get_queryset(self):
+        return User.objects.filter(role=User.Role.ADMIN, is_superuser=False).order_by("-date_joined")
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        staff = serializer.save()
+        log_action(
+            request.user,
+            staff,
+            "CREATE_STAFF",
+            {"email": staff.email, "username": staff.username},
+        )
+        return Response(
+            {
+                "message": "Staff / Administrator account created successfully.",
+                "temporary_password": staff.temporary_password,
+                "staff_details": self.get_serializer(staff).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class PublicStaffVerifyView(APIView):
+    """Public endpoint to verify a Staff / Administrator ID or username without authentication"""
+    permission_classes = []
+
+    @extend_schema(summary="Public staff verification endpoint")
+    def get(self, request):
+        query = (
+            request.query_params.get("staff")
+            or request.query_params.get("username")
+            or request.query_params.get("query")
+            or request.query_params.get("id")
+        )
+        if not query:
+            return Response({"detail": "Verification query parameter required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        query = query.strip().rstrip('/')
+        staff = User.objects.filter(role=User.Role.ADMIN).filter(
+            models.Q(username__iexact=query) |
+            models.Q(email__iexact=query) |
+            models.Q(id=int(query) if query.isdigit() else -1)
+        ).first()
+
+        if not staff:
+            return Response(
+                {
+                    "is_verified": False,
+                    "detail": f"No official Staff / Administrator record found matching '{query}'.",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(
+            {
+                "is_verified": True,
+                "full_name": staff.get_full_name() or staff.username,
+                "first_name": staff.first_name,
+                "last_name": staff.last_name,
+                "username": staff.username,
+                "role": "SYSTEM ADMINISTRATOR & ACADEMIC STAFF",
+                "status": staff.status,
+                "email": staff.email,
+                "phone": staff.phone,
+                "profile_picture_url": staff.profile_picture_url,
+                "verification_date": timezone.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "institution": "Stephotec Computer Technologies Ltd",
+            },
+            status=status.HTTP_200_OK,
+        )
+
 
 

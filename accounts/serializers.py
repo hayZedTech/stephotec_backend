@@ -448,3 +448,69 @@ class StudentProfilePageSerializer(serializers.ModelSerializer):
             gender_display = "Other"
         data["gender"] = gender_display
         return data
+
+
+class AdminStaffSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(read_only=True)
+    username = serializers.CharField(read_only=True)
+    temporary_password = serializers.CharField(read_only=True)
+    first_name = serializers.CharField(required=True, max_length=150)
+    last_name = serializers.CharField(required=True, max_length=150)
+    email = serializers.EmailField(required=True)
+    phone = serializers.CharField(required=False, allow_blank=True)
+    profile_picture_url = serializers.CharField(required=False, allow_blank=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "first_name",
+            "last_name",
+            "email",
+            "phone",
+            "role",
+            "status",
+            "temporary_password",
+            "profile_picture_url",
+            "date_joined",
+        ]
+        read_only_fields = ["id", "username", "temporary_password", "date_joined"]
+
+    def validate_email(self, value):
+        existing = User.objects.filter(email__iexact=value)
+        if self.instance:
+            existing = existing.exclude(pk=self.instance.pk)
+        if existing.exists():
+            raise serializers.ValidationError("A staff user with this email already exists.")
+        return value
+
+    def create(self, validated_data):
+        chars = string.ascii_letters + string.digits + "!@#$"
+        temporary_password = ''.join(secrets.choice(chars) for _ in range(12))
+        
+        last_staff = User.all_objects.filter(username__startswith="STAFF").order_by("username").last()
+        seq = 1
+        if last_staff:
+            try:
+                seq = int(last_staff.username.replace("STAFF", "")) + 1
+            except ValueError:
+                seq = 1
+
+        username = f"STAFF{seq:04d}"
+
+        user = User(
+            username=username,
+            first_name=validated_data["first_name"],
+            last_name=validated_data["last_name"],
+            email=validated_data["email"],
+            phone=validated_data.get("phone", ""),
+            role=User.Role.ADMIN,
+            is_staff=True,
+            status=validated_data.get("status", User.Status.ACTIVE),
+            temporary_password=temporary_password,
+        )
+        user.set_password(temporary_password)
+        user.save()
+        return user
+

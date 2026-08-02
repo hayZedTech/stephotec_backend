@@ -14,11 +14,14 @@ from .views import (
     PublicStudentVerifyView,
     RequestPasswordResetView,
     ConfirmPasswordResetView,
+    AdminStaffManagementViewSet,
+    PublicStaffVerifyView,
 )
 
 router = DefaultRouter()
 router.register(r'courses', CourseViewSet, basename='course')
 router.register(r'admin/students', AdminStudentManagementViewSet, basename='admin-student')
+router.register(r'admin/staff', AdminStaffManagementViewSet, basename='admin-staff')
 
 # Nested router for student courses
 student_router = DefaultRouter()
@@ -43,6 +46,7 @@ urlpatterns = [
     path('student/activate-profile/', StudentProfileActivationView.as_view(), name='student_activate_profile'),
     path('student/change-password/', ChangePasswordView.as_view(), name='change_password'),
     path('student/verify/', PublicStudentVerifyView.as_view(), name='student_verify'),
+    path('staff/verify/', PublicStaffVerifyView.as_view(), name='staff_verify'),
     # File Upload
     path('upload/profile-picture/', FileUploadView.as_view(), name='upload_profile_picture'),
 ]
