@@ -64,9 +64,11 @@ class LearningContentViewSet(viewsets.ModelViewSet):
     ordering = ["order", "created_at"]
 
     def get_queryset(self):
-        if self.request.user.role == "ADMIN":
+        user = self.request.user
+        if user.role == "ADMIN":
             return LearningContent.objects.all()
-        return LearningContent.objects.filter(is_published=True)
+        student_course_ids = user.courses.values_list("course_id", flat=True)
+        return LearningContent.objects.filter(is_published=True, course_id__in=student_course_ids)
 
     def _handle_file_upload(self, request, instance=None):
         """Upload file to Cloudinary and return URL, or None if no file."""
@@ -113,9 +115,11 @@ class AssignmentViewSet(viewsets.ModelViewSet):
     ordering = ["-due_date"]
 
     def get_queryset(self):
-        if self.request.user.role == "ADMIN":
+        user = self.request.user
+        if user.role == "ADMIN":
             return Assignment.objects.all()
-        return Assignment.objects.filter(status="PUBLISHED")
+        student_course_ids = user.courses.values_list("course_id", flat=True)
+        return Assignment.objects.filter(status="PUBLISHED", course_id__in=student_course_ids)
 
     def create(self, request, *args, **kwargs):
         if request.user.role != "ADMIN":
@@ -446,9 +450,11 @@ class HandoutViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        if self.request.user.role == "ADMIN":
+        user = self.request.user
+        if user.role == "ADMIN":
             return Handout.objects.all()
-        return Handout.objects.filter(status="PUBLISHED")
+        student_course_ids = user.courses.values_list("course_id", flat=True)
+        return Handout.objects.filter(status="PUBLISHED", course_id__in=student_course_ids)
 
     def create(self, request, *args, **kwargs):
         if request.user.role != "ADMIN":

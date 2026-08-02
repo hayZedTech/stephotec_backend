@@ -659,9 +659,17 @@ class AdminStaffManagementViewSet(viewsets.ModelViewSet):
     ordering = ["-date_joined"]
 
     def get_queryset(self):
-        return User.objects.filter(role=User.Role.ADMIN, is_superuser=False).order_by("-date_joined")
+        user = self.request.user
+        if user.is_superuser:
+            return User.objects.filter(role=User.Role.ADMIN).order_by("-date_joined")
+        return User.objects.filter(pk=user.pk)
 
     def create(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return Response(
+                {"detail": "Only superusers can create new staff accounts."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         staff = serializer.save()
@@ -679,6 +687,37 @@ class AdminStaffManagementViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if not request.user.is_superuser and instance.pk != request.user.pk:
+            return Response(
+                {"detail": "You do not have permission to update other staff profiles."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if not request.user.is_superuser and instance.pk != request.user.pk:
+            return Response(
+                {"detail": "You do not have permission to update other staff profiles."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return Response(
+                {"detail": "Only superusers can delete staff accounts."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"], url_path="titles")
+    def titles(self, request):
+        titles = [choice[0] for choice in User.STAFF_TITLE_CHOICES]
+        return Response({"titles": titles}, status=status.HTTP_200_OK)
 
 
 class PublicStaffVerifyView(APIView):
@@ -719,7 +758,7 @@ class PublicStaffVerifyView(APIView):
                 "first_name": staff.first_name,
                 "last_name": staff.last_name,
                 "username": staff.username,
-                "role": "SYSTEM ADMINISTRATOR & ACADEMIC STAFF",
+                "role": staff.job_title or "System Administrator",
                 "status": staff.status,
                 "email": staff.email,
                 "phone": staff.phone,

@@ -280,6 +280,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data["username"] = self.user.username
         data["email"] = self.user.email
         data["role"] = self.user.role
+        data["is_superuser"] = self.user.is_superuser
+        data["job_title"] = self.user.job_title
         data["status"] = self.user.status
         data["is_profile_complete"] = self.user.is_profile_complete
         data["is_industrial_training"] = self.user.is_industrial_training
@@ -414,6 +416,8 @@ class StudentProfilePageSerializer(serializers.ModelSerializer):
             "email",
             "phone",
             "additional_phone",
+            "job_title",
+            "is_superuser",
             "date_of_birth",
             "gender",
             "address",
@@ -458,6 +462,7 @@ class AdminStaffSerializer(serializers.ModelSerializer):
     last_name = serializers.CharField(required=True, max_length=150)
     email = serializers.EmailField(required=True)
     phone = serializers.CharField(required=False, allow_blank=True)
+    job_title = serializers.CharField(required=False, allow_blank=True)
     profile_picture_url = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
@@ -469,6 +474,7 @@ class AdminStaffSerializer(serializers.ModelSerializer):
             "last_name",
             "email",
             "phone",
+            "job_title",
             "role",
             "status",
             "temporary_password",
@@ -505,6 +511,7 @@ class AdminStaffSerializer(serializers.ModelSerializer):
             last_name=validated_data["last_name"],
             email=validated_data["email"],
             phone=validated_data.get("phone", ""),
+            job_title=validated_data.get("job_title", "System Administrator"),
             role=User.Role.ADMIN,
             is_staff=True,
             status=validated_data.get("status", User.Status.ACTIVE),

@@ -95,6 +95,27 @@ class User(AbstractUser):
     )
     address = models.TextField(blank=True, null=True)
     state_of_origin = models.CharField(max_length=100, blank=True, null=True)
+    STAFF_TITLE_CHOICES = [
+        ("CEO & Founder", "CEO & Founder"),
+        ("Chief Executive Officer (CEO)", "Chief Executive Officer (CEO)"),
+        ("Managing Director", "Managing Director"),
+        ("Academic Director", "Academic Director"),
+        ("School Registrar", "School Registrar"),
+        ("Senior Lecturer & Instructor", "Senior Lecturer & Instructor"),
+        ("Academic Staff / Facilitator", "Academic Staff / Facilitator"),
+        ("IT Director & Systems Manager", "IT Director & Systems Manager"),
+        ("Bursar / Lead Accountant", "Bursar / Lead Accountant"),
+        ("Administrative Officer", "Administrative Officer"),
+        ("System Administrator", "System Administrator"),
+    ]
+    job_title = models.CharField(
+        max_length=150,
+        blank=True,
+        null=True,
+        choices=STAFF_TITLE_CHOICES,
+        default=None,
+        help_text="Official staff role/designation displayed on Staff ID card and verification portal.",
+    )
     profile_picture_url = models.URLField(
         blank=True,
         null=True,
@@ -221,3 +242,19 @@ class StudentCourse(models.Model):
         else:
             sequence = 1
         return f"{prefix}{sequence:04d}"
+
+
+# Proxy Models for Separate Django Admin Tables
+class StudentUser(User):
+    class Meta:
+        proxy = True
+        verbose_name = "Student"
+        verbose_name_plural = "Students"
+
+
+class StaffUser(User):
+    class Meta:
+        proxy = True
+        verbose_name = "Staff / Administrator"
+        verbose_name_plural = "Staff & Administrators"
+
