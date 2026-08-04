@@ -403,15 +403,7 @@ class CertificateViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         instance = serializer.save()
 
-        # Send notification to student
-        student = instance.student_course.student
-        send_student_notification(
-            student=student,
-            title="New Certificate Earned!",
-            message=f"You have earned a new certificate: '{instance.title}' ({instance.certificate_number}) for {instance.student_course.course.name}.",
-            notification_type="SUCCESS",
-            created_by=request.user,
-        )
+        # Notifications for certificates are only sent when explicitly 'issued'
 
         return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
 

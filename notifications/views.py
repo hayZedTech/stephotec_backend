@@ -44,13 +44,24 @@ class AdminAlertViewSet(viewsets.ReadOnlyModelViewSet):
     def unread_count(self, request):
         return Response({"unread_count": AdminAlert.objects.filter(is_read=False).count()})
 
+    @action(detail=True, methods=["delete"], url_path="delete")
+    def delete_alert(self, request, pk=None):
+        alert = self.get_object()
+        alert.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["delete"], url_path="clear_all")
+    def clear_all(self, request):
+        AdminAlert.objects.all().delete()
+        return Response({"detail": "All alerts cleared."})
+
 
 class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
     queryset = Notification.objects.all()
     
     def get_permissions(self):
-        if self.action in ["student_notifications", "unread_count", "mark_as_read"]:
+        if self.action in ["student_notifications", "unread_count", "mark_as_read", "mark_all_read", "delete_for_me", "clear_all_for_me"]:
             return [IsAuthenticated()]
         return [IsAdminUserRole()]
     
@@ -149,3 +160,30 @@ class NotificationViewSet(viewsets.ModelViewSet):
         ).count()
         
         return Response({"unread_count": unread_count})
+
+    @action(detail=False, methods=["post"], url_path="mark_all_read")
+    def mark_all_read(self, request):
+        """Mark all notifications as read for the current student user"""
+        NotificationRecipient.objects.filter(
+            recipient=request.user,
+            is_read=False
+        ).update(is_read=True, read_at=timezone.now())
+        return Response({"detail": "All notifications marked as read."})
+
+    @action(detail=True, methods=["delete"], url_path="delete_for_me")
+    def delete_for_me(self, request, pk=None):
+        """Remove a notification from the student's inbox (just their recipient entry)"""
+        recipient = NotificationRecipient.objects.filter(
+            notification_id=pk,
+            recipient=request.user
+        ).first()
+        if not recipient:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        recipient.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["delete"], url_path="clear_all_for_me")
+    def clear_all_for_me(self, request):
+        """Remove all notifications from the student's inbox"""
+        NotificationRecipient.objects.filter(recipient=request.user).delete()
+        return Response({"detail": "All notifications cleared."})
