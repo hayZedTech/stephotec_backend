@@ -331,10 +331,27 @@ class StudentProfileActivationSerializer(serializers.ModelSerializer):
     address = serializers.CharField(required=True)
     state_of_origin = serializers.CharField(required=True)
     profile_picture_url = serializers.URLField(required=False, allow_blank=True)
+    is_industrial_training = serializers.BooleanField(required=False)
+    admission_year = serializers.ChoiceField(choices=User.ADMISSION_YEAR_CHOICES, required=False, allow_null=True)
+    admission_year_write = serializers.ChoiceField(choices=User.ADMISSION_YEAR_CHOICES, required=False, allow_null=True)
+
     class Meta:
         model = User
-        fields = ["new_password", "phone", "date_of_birth", "gender", "address", "state_of_origin", "profile_picture_url", "is_profile_complete"]
+        fields = [
+            "new_password",
+            "phone",
+            "date_of_birth",
+            "gender",
+            "address",
+            "state_of_origin",
+            "profile_picture_url",
+            "is_profile_complete",
+            "is_industrial_training",
+            "admission_year",
+            "admission_year_write",
+        ]
         read_only_fields = ["is_profile_complete"]
+
     def update(self, instance, validated_data):
         instance.phone = validated_data.get("phone", instance.phone)
         instance.date_of_birth = validated_data.get("date_of_birth", instance.date_of_birth)
@@ -342,10 +359,20 @@ class StudentProfileActivationSerializer(serializers.ModelSerializer):
         instance.address = validated_data.get("address", instance.address)
         instance.state_of_origin = validated_data.get("state_of_origin", instance.state_of_origin)
         instance.profile_picture_url = validated_data.get("profile_picture_url", instance.profile_picture_url)
+        instance.is_industrial_training = validated_data.get("is_industrial_training", instance.is_industrial_training)
         instance.is_profile_complete = True
         instance.temporary_password = None
         instance.set_password(validated_data["new_password"])
         instance.save()
+
+        # Update primary course admission year if provided
+        admission_year_val = validated_data.get("admission_year_write") or validated_data.get("admission_year")
+        if admission_year_val:
+            primary_course = instance.courses.filter(is_primary=True).first() or instance.courses.first()
+            if primary_course:
+                primary_course.admission_year = admission_year_val
+                primary_course.save()
+
         return instance
 
 
@@ -385,6 +412,7 @@ class StudentProfileDetailSerializer(serializers.ModelSerializer):
             "profile_picture_url",
             "status",
             "is_profile_complete",
+            "is_industrial_training",
             "courses",
         ]
         read_only_fields = [
@@ -395,6 +423,7 @@ class StudentProfileDetailSerializer(serializers.ModelSerializer):
             "email",
             "status",
             "is_profile_complete",
+            "is_industrial_training",
             "courses",
         ]
     

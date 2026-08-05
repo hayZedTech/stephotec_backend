@@ -792,3 +792,66 @@ class AdminProfileView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.to_representation(request.user), status=status.HTTP_200_OK)
+
+
+import json
+import os
+
+class AdminSettingsView(APIView):
+    """
+    Endpoint to load and update global system settings.
+    Saves state in a json file C:\stephotec_backend\system_settings.json.
+    """
+    permission_classes = []
+
+    @property
+    def settings_file_path(self):
+        return os.path.join(settings.BASE_DIR, 'system_settings.json')
+
+    def get_default_settings(self):
+        return {
+            "emailNotifications": True,
+            "autoApproveStudents": False,
+            "maintenanceMode": False,
+            "allowNewRegistrations": True,
+            "allowIdCardDownload": True,
+        }
+
+    def load_settings(self):
+        file_path = self.settings_file_path
+        if not os.path.exists(file_path):
+            return self.get_default_settings()
+        try:
+            with open(file_path, 'r') as f:
+                return {**self.get_default_settings(), **json.load(f)}
+        except Exception:
+            return self.get_default_settings()
+
+    def save_settings(self, settings_data):
+        try:
+            with open(self.settings_file_path, 'w') as f:
+                json.dump(settings_data, f, indent=4)
+            return True
+        except Exception:
+            return False
+
+    def get(self, request):
+        return Response(self.load_settings(), status=status.HTTP_200_OK)
+
+    def put(self, request):
+        current = self.load_settings()
+        new_data = request.data
+        for key in self.get_default_settings().keys():
+            if key in new_data:
+                # convert to boolean
+                val = new_data[key]
+                if isinstance(val, str):
+                    current[key] = val.lower() == 'true'
+                else:
+                    current[key] = bool(val)
+        if self.save_settings(current):
+            return Response(current, status=status.HTTP_200_OK)
+        return Response({"detail": "Failed to save settings file."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def post(self, request):
+        return self.put(request)

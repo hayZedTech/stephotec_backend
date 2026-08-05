@@ -17,6 +17,7 @@ from .views import (
     AdminStaffManagementViewSet,
     PublicStaffVerifyView,
     AdminProfileView,
+    AdminSettingsView,
 )
 
 router = DefaultRouter()
@@ -51,4 +52,5 @@ urlpatterns = [
     # File Upload
     path('upload/profile-picture/', FileUploadView.as_view(), name='upload_profile_picture'),
     path('admin/profile/', AdminProfileView.as_view(), name='admin_profile'),
+    path('admin/settings/', AdminSettingsView.as_view(), name='admin_settings'),
 ]

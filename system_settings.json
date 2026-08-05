@@ -1,0 +1,7 @@
+{
+    "emailNotifications": true,
+    "autoApproveStudents": false,
+    "maintenanceMode": false,
+    "allowNewRegistrations": true,
+    "allowIdCardDownload": false
+}
