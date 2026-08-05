@@ -180,7 +180,7 @@ class AdminStudentManagementViewSet(
         send_student_notification(
             student=student,
             title="Welcome to Stephotec Portal!",
-            message=f"Hello {student.first_name or student.username}, your student account has been created. Temporary password: {temporary_password}",
+            message=f"Hello {student.first_name or student.username}, your student account has been created successfully. Welcome aboard!",
             notification_type="SUCCESS",
             created_by=request.user,
         )
