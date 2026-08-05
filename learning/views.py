@@ -576,6 +576,35 @@ class HandoutPurchaseViewSet(viewsets.ModelViewSet):
                     HandoutPurchaseSerializer(existing).data,
                     status=status.HTTP_200_OK,
                 )
+            # If FAILED or REFUNDED, update the existing request to resubmit it
+            txn_id = f"REQ_{handout.id}_{request.user.id}_{int(timezone.now().timestamp())}"
+            existing.status = "PENDING"
+            existing.transaction_id = txn_id
+            existing.amount_paid = handout.price
+            existing.purchased_at = timezone.now()
+            existing.save()
+
+            # Notify student
+            send_student_notification(
+                student=request.user,
+                title="Handout Request Received",
+                message=f"Your request for '{handout.title}' (₦{handout.price:,.2f}) has been received and is pending payment confirmation. Please make payment to the provided bank account.",
+            )
+
+            # Notify admins
+            student_name = request.user.get_full_name() or request.user.username
+            notify_admins(
+                title="New Handout Payment Request",
+                message=f"{student_name} ({request.user.username}) requested handout '{handout.title}' (₦{handout.price:,.2f}). Please confirm payment and approve.",
+                alert_type="HANDOUT_REQUEST",
+                triggered_by=request.user,
+                related_object_id=existing.id,
+            )
+
+            return Response(
+                HandoutPurchaseSerializer(existing).data,
+                status=status.HTTP_200_OK,
+            )
 
         txn_id = f"REQ_{handout.id}_{request.user.id}_{int(timezone.now().timestamp())}"
         purchase = HandoutPurchase.objects.create(
