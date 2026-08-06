@@ -508,6 +508,9 @@ class FileUploadView(APIView):
         
         try:
             url = FileUploadService.upload_profile_picture(file, request.user.id)
+            user = request.user
+            user.profile_picture_url = url
+            user.save(update_fields=['profile_picture_url'])
             return Response(
                 {"url": url},
                 status=status.HTTP_200_OK,

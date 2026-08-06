@@ -572,6 +572,7 @@ class AdminProfileUpdateSerializer(serializers.ModelSerializer):
             "bio",
             "address",
             "job_title",
+            "profile_picture_url",
         ]
 
     def to_representation(self, instance):
@@ -583,8 +584,8 @@ class AdminProfileUpdateSerializer(serializers.ModelSerializer):
             "bio": instance.bio,
             "address": instance.address,
             "job_title": instance.job_title,
+            "profile_picture_url": instance.profile_picture_url,
             "username": instance.username,
             "email": instance.email,
             "role": instance.role,
-            "profile_picture_url": instance.profile_picture_url,
         }
