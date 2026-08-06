@@ -228,6 +228,11 @@ CORS_ALLOWED_ORIGINS = env.list(
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 
+CSRF_TRUSTED_ORIGINS = [
+    "https://stephotec-backend.onrender.com",
+    "https://stephotec-portal.vercel.app",
+]
+
 
 
 # ==========================
