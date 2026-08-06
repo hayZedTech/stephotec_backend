@@ -121,12 +121,12 @@ class AdminStudentCreationSerializer(serializers.Serializer):
     profile_picture_url = serializers.CharField(required=False, allow_blank=True)
 
     def validate_email(self, value):
-        existing = User.objects.filter(email__iexact=value)
+        existing = User.objects.filter(email__iexact=value, role=User.Role.STUDENT)
         if self.instance:
             existing = existing.exclude(pk=self.instance.pk)
         if existing.exists():
             raise serializers.ValidationError(
-                "A user account with this email already exists."
+                "A student account with this email already exists."
             )
         return value
     
@@ -251,38 +251,46 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         username_or_email = attrs.get("username", "").strip()
         password = attrs.get("password")
+        
+        authenticated_user = None
+
         if "@" in username_or_email:
-            try:
-                user_found = User.objects.get(email__iexact=username_or_email)
-                username_to_auth = user_found.username
-            except User.DoesNotExist:
+            candidates = User.all_objects.filter(email__iexact=username_or_email)
+            if not candidates.exists():
                 raise exceptions.AuthenticationFailed(
-                    "No active account found with the given credentials"
+                    "No account found with the given credentials. Please check your username/email and password."
+                )
+            
+            for candidate in candidates:
+                user_auth = authenticate(username=candidate.username, password=password)
+                if user_auth:
+                    authenticated_user = user_auth
+                    break
+            
+            if not authenticated_user:
+                raise exceptions.AuthenticationFailed(
+                    "No account found with the given credentials. Please check your username/email and password."
                 )
         else:
-            username_to_auth = username_or_email
-        attrs["username"] = username_to_auth
-        authenticated_user = authenticate(
-            username=username_to_auth,
-            password=password
-        )
-        if not authenticated_user:
-            # Check if user exists but is_active=False (common for Django admin-created accounts)
-            try:
-                raw_user = User.all_objects.get(username=username_to_auth)
-                if not raw_user.is_active:
-                    raise exceptions.AuthenticationFailed(
-                        "This account is not active. Please contact your administrator."
-                    )
-            except User.DoesNotExist:
-                pass
-            raise exceptions.AuthenticationFailed(
-                "No account found with the given credentials. Please check your username/email and password."
-            )
+            authenticated_user = authenticate(username=username_or_email, password=password)
+            if not authenticated_user:
+                try:
+                    raw_user = User.all_objects.get(username=username_or_email)
+                    if not raw_user.is_active:
+                        raise exceptions.AuthenticationFailed(
+                            "This account is not active. Please contact your administrator."
+                        )
+                except User.DoesNotExist:
+                    pass
+                raise exceptions.AuthenticationFailed(
+                    "No account found with the given credentials. Please check your username/email and password."
+                )
+
         if not authenticated_user.is_active:
             raise exceptions.AuthenticationFailed(
                 "This account has been deactivated. Please contact your administrator."
             )
+
         self.user = authenticated_user
         data = super().validate(attrs)
         data["user_id"] = self.user.id
@@ -522,11 +530,11 @@ class AdminStaffSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "username", "temporary_password", "date_joined"]
 
     def validate_email(self, value):
-        existing = User.objects.filter(email__iexact=value)
+        existing = User.objects.filter(email__iexact=value, role=User.Role.ADMIN)
         if self.instance:
             existing = existing.exclude(pk=self.instance.pk)
         if existing.exists():
-            raise serializers.ValidationError("A staff user with this email already exists.")
+            raise serializers.ValidationError("A staff/admin user with this email already exists.")
         return value
 
     def create(self, validated_data):

@@ -129,9 +129,9 @@ class User(AbstractUser):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['email'],
+                fields=['email', 'role'],
                 condition=models.Q(is_deleted=False),
-                name='unique_email_not_deleted'
+                name='unique_email_role_not_deleted'
             )
         ]
 
