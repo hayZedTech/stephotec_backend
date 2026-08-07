@@ -144,21 +144,22 @@ class User(AbstractUser):
     # Username generation
     @staticmethod
     def generate_username():
-        last_user = (
-            User.all_objects.filter(username__startswith="STEPH")
-            .order_by("username")
-            .last()
-        )
-        if last_user:
+        existing_usernames = User.all_objects.filter(username__startswith="STEPH").values_list("username", flat=True)
+        max_seq = 0
+        for uname in existing_usernames:
             try:
-                sequence = (
-                    int(last_user.username.replace("STEPH", "")) + 1
-                )
+                seq = int(uname.replace("STEPH", ""))
+                if seq > max_seq:
+                    max_seq = seq
             except ValueError:
-                sequence = 1
-        else:
-            sequence = 1
-        return f"STEPH{sequence:06d}"
+                pass
+        
+        next_seq = max_seq + 1
+        candidate = f"STEPH{next_seq:06d}"
+        while User.all_objects.filter(username=candidate).exists():
+            next_seq += 1
+            candidate = f"STEPH{next_seq:06d}"
+        return candidate
     def save(self, *args, **kwargs):
     # Ensure all Django superusers are ADMINs
         if self.is_superuser:
@@ -243,20 +244,28 @@ class StudentCourse(models.Model):
     def generate_enrollment_id(self):
         short_year = str(self.admission_year)[-2:]
         prefix = f"{self.course.code_prefix}/{short_year}/"
-        last = (
-            StudentCourse.objects.filter(
-                course=self.course,
-                admission_year=self.admission_year,
-                enrollment_id__startswith=prefix,
-            )
-            .order_by("enrollment_id")
-            .last()
-        )
-        if last:
-            sequence = int(last.enrollment_id.split("/")[-1]) + 1
-        else:
-            sequence = 1
-        return f"{prefix}{sequence:04d}"
+        
+        existing_ids = StudentCourse.objects.filter(
+            enrollment_id__startswith=prefix
+        ).values_list("enrollment_id", flat=True)
+        
+        max_seq = 0
+        for eid in existing_ids:
+            try:
+                seq_part = int(eid.split("/")[-1])
+                if seq_part > max_seq:
+                    max_seq = seq_part
+            except (ValueError, IndexError):
+                pass
+        
+        next_seq = max_seq + 1
+        candidate = f"{prefix}{next_seq:04d}"
+        
+        while StudentCourse.objects.filter(enrollment_id=candidate).exists():
+            next_seq += 1
+            candidate = f"{prefix}{next_seq:04d}"
+            
+        return candidate
 
 
 # Proxy Models for Separate Django Admin Tables

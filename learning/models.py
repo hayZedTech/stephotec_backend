@@ -193,7 +193,7 @@ class Certificate(models.Model):
         related_name="certificates"
     )
     title = models.CharField(max_length=255)
-    certificate_number = models.CharField(max_length=100, unique=True)
+    certificate_number = models.CharField(max_length=100, unique=True, blank=True)
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
@@ -215,6 +215,31 @@ class Certificate(models.Model):
 
     def __str__(self):
         return f"{self.student_course.student.username} - {self.title}"
+
+    def generate_certificate_number(self):
+        import datetime
+        short_year = str(datetime.datetime.now().year)[-2:]
+        prefix = f"CERT/{short_year}/"
+        existing_ids = Certificate.objects.filter(certificate_number__startswith=prefix).values_list("certificate_number", flat=True)
+        max_seq = 0
+        for cid in existing_ids:
+            try:
+                seq_part = int(cid.split("/")[-1])
+                if seq_part > max_seq:
+                    max_seq = seq_part
+            except (ValueError, IndexError):
+                pass
+        next_seq = max_seq + 1
+        candidate = f"{prefix}{next_seq:05d}"
+        while Certificate.objects.filter(certificate_number=candidate).exists():
+            next_seq += 1
+            candidate = f"{prefix}{next_seq:05d}"
+        return candidate
+
+    def save(self, *args, **kwargs):
+        if not self.certificate_number:
+            self.certificate_number = self.generate_certificate_number()
+        super().save(*args, **kwargs)
 
 
 class Handout(models.Model):
