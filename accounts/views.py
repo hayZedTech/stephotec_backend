@@ -192,14 +192,11 @@ class AdminStudentManagementViewSet(
             except Exception:
                 pass
 
-        return Response(
-            {
-                "message": "Student account provisioned successfully.",
-                "temporary_password": temporary_password,
-                "student_details": self.get_serializer(student).data,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+        resp_data = self.get_serializer(student).data
+        resp_data["message"] = "Student account provisioned successfully."
+        resp_data["temporary_password"] = temporary_password
+        resp_data["student_details"] = self.get_serializer(student).data
+        return Response(resp_data, status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
         student = serializer.save()

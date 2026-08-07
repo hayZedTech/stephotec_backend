@@ -118,7 +118,19 @@ class AdminStudentCreationSerializer(serializers.Serializer):
         default=User.Status.ACTIVE,
         required=False,
     )
-    profile_picture_url = serializers.CharField(required=False, allow_blank=True)
+    profile_picture_url = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def to_internal_value(self, data):
+        # Handle empty strings for dates and nulls for profile pictures
+        mutable_data = data.copy() if hasattr(data, "copy") else data
+        
+        if mutable_data.get("date_of_birth") == "":
+            mutable_data["date_of_birth"] = None
+            
+        if mutable_data.get("profile_picture_url") == "":
+            mutable_data["profile_picture_url"] = None
+            
+        return super().to_internal_value(mutable_data)
 
     def validate_email(self, value):
         existing = User.objects.filter(email__iexact=value, role=User.Role.STUDENT)

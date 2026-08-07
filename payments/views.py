@@ -130,7 +130,7 @@ class PaymentViewSet(
             payment, was_created = Payment.objects.get_or_create(student_course=sc)
 
             if was_created:
-                if sc.course.default_fee:
+                if sc.course and sc.course.default_fee:
                     payment.course_fee = sc.course.default_fee
                     payment.save()
                 created += 1
@@ -167,7 +167,7 @@ class PaymentViewSet(
             student_map[sid]["courses"].append(p)
 
             if p.student_course.is_primary:
-                student_map[sid]["primary_course_name"] = p.student_course.course.name
+                student_map[sid]["primary_course_name"] = p.student_course.course.name if p.student_course.course else "Unassigned"
                 student_map[sid]["primary_course_fee"] = p.course_fee
                 student_map[sid]["primary_amount_paid"] = p.amount_paid
                 student_map[sid]["primary_outstanding"] = p.outstanding
@@ -177,7 +177,7 @@ class PaymentViewSet(
         for sid, data in student_map.items():
             if not data["primary_course_name"] and data["courses"]:
                 first = data["courses"][0]
-                data["primary_course_name"] = first.student_course.course.name
+                data["primary_course_name"] = first.student_course.course.name if first.student_course.course else "Unassigned"
                 data["primary_course_fee"] = first.course_fee
                 data["primary_amount_paid"] = first.amount_paid
                 data["primary_outstanding"] = first.outstanding
