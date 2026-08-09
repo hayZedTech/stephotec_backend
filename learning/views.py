@@ -57,7 +57,7 @@ from .serializers import (
     QuizAttemptSerializer,
 )
 from accounts.permissions import IsAdminUserRole
-from accounts.models import StudentCourse
+from accounts.models import StudentCourse, StudentGroup
 
 User = get_user_model()
 
@@ -795,11 +795,21 @@ class StudentLearningContentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], permission_classes=[IsAdminUserRole])
     def assign_to_students(self, request):
         content_id = request.data.get("content_id")
-        student_ids = request.data.get("student_ids", [])
+        student_ids = list(request.data.get("student_ids", []))
+        group_id = request.data.get("group_id")
+
+        # Resolve group members into student_ids
+        if group_id:
+            try:
+                group = StudentGroup.objects.get(id=group_id)
+                group_member_ids = list(group.members.values_list("id", flat=True))
+                student_ids = list(set(student_ids + group_member_ids))
+            except StudentGroup.DoesNotExist:
+                return Response({"detail": "Group not found"}, status=status.HTTP_404_NOT_FOUND)
 
         if not content_id or not student_ids:
             return Response(
-                {"detail": "content_id and student_ids are required"},
+                {"detail": "content_id and (student_ids or group_id) are required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -839,11 +849,20 @@ class StudentLearningContentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], permission_classes=[IsAdminUserRole])
     def unassign_from_students(self, request):
         content_id = request.data.get("content_id")
-        student_ids = request.data.get("student_ids", [])
+        student_ids = list(request.data.get("student_ids", []))
+        group_id = request.data.get("group_id")
+
+        if group_id:
+            try:
+                group = StudentGroup.objects.get(id=group_id)
+                group_member_ids = list(group.members.values_list("id", flat=True))
+                student_ids = list(set(student_ids + group_member_ids))
+            except StudentGroup.DoesNotExist:
+                return Response({"detail": "Group not found"}, status=status.HTTP_404_NOT_FOUND)
 
         if not content_id or not student_ids:
             return Response(
-                {"detail": "content_id and student_ids are required"},
+                {"detail": "content_id and (student_ids or group_id) are required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -909,11 +928,20 @@ class StudentAssignmentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], permission_classes=[IsAdminUserRole])
     def assign_to_students(self, request):
         assignment_id = request.data.get("assignment_id")
-        student_ids = request.data.get("student_ids", [])
+        student_ids = list(request.data.get("student_ids", []))
+        group_id = request.data.get("group_id")
+
+        if group_id:
+            try:
+                group = StudentGroup.objects.get(id=group_id)
+                group_member_ids = list(group.members.values_list("id", flat=True))
+                student_ids = list(set(student_ids + group_member_ids))
+            except StudentGroup.DoesNotExist:
+                return Response({"detail": "Group not found"}, status=status.HTTP_404_NOT_FOUND)
 
         if not assignment_id or not student_ids:
             return Response(
-                {"detail": "assignment_id and student_ids are required"},
+                {"detail": "assignment_id and (student_ids or group_id) are required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -952,11 +980,20 @@ class StudentAssignmentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], permission_classes=[IsAdminUserRole])
     def unassign_from_students(self, request):
         assignment_id = request.data.get("assignment_id")
-        student_ids = request.data.get("student_ids", [])
+        student_ids = list(request.data.get("student_ids", []))
+        group_id = request.data.get("group_id")
+
+        if group_id:
+            try:
+                group = StudentGroup.objects.get(id=group_id)
+                group_member_ids = list(group.members.values_list("id", flat=True))
+                student_ids = list(set(student_ids + group_member_ids))
+            except StudentGroup.DoesNotExist:
+                return Response({"detail": "Group not found"}, status=status.HTTP_404_NOT_FOUND)
 
         if not assignment_id or not student_ids:
             return Response(
-                {"detail": "assignment_id and student_ids are required"},
+                {"detail": "assignment_id and (student_ids or group_id) are required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

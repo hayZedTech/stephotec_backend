@@ -18,12 +18,14 @@ from .views import (
     PublicStaffVerifyView,
     AdminProfileView,
     AdminSettingsView,
+    StudentGroupViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'courses', CourseViewSet, basename='course')
 router.register(r'admin/students', AdminStudentManagementViewSet, basename='admin-student')
 router.register(r'admin/staff', AdminStaffManagementViewSet, basename='admin-staff')
+router.register(r'admin/groups', StudentGroupViewSet, basename='admin-group')
 
 # Nested router for student courses
 student_router = DefaultRouter()

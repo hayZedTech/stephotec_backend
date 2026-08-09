@@ -14,7 +14,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from notifications.email_service import EmailService
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from .models import User, Course, StudentCourse
+from .models import User, Course, StudentCourse, StudentGroup
 from audit.models import AuditLog
 from .permissions import IsAdminUserRole
 from .serializers import (
@@ -28,6 +28,7 @@ from .serializers import (
     StudentProfilePageSerializer,
     StudentCourseSerializer,
     AdminProfileUpdateSerializer,
+    StudentGroupSerializer,
 )
 from .services import FileUploadService
 from notifications.services import send_student_notification
@@ -855,3 +856,72 @@ class AdminSettingsView(APIView):
 
     def post(self, request):
         return self.put(request)
+
+
+class StudentGroupViewSet(viewsets.ModelViewSet):
+    """Admin CRUD for student groups, plus student-facing list of own groups."""
+    serializer_class = StudentGroupSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["course"]
+    search_fields = ["name", "description"]
+    ordering_fields = ["name", "created_at"]
+    ordering = ["-created_at"]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == "ADMIN":
+            return StudentGroup.objects.select_related("course").prefetch_related("members").all()
+        # Students see only their own groups
+        return StudentGroup.objects.filter(members=user).select_related("course").prefetch_related("members")
+
+    def get_permissions(self):
+        if self.action in ["create", "update", "partial_update", "destroy", "bulk_delete"]:
+            return [IsAdminUserRole()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        group = serializer.save()
+        log_action(self.request.user, None, "CREATE", {"group": group.name, "course": group.course.name})
+
+    def perform_destroy(self, instance):
+        log_action(self.request.user, None, "DELETE", {"group": instance.name})
+        instance.delete()
+
+    @action(detail=False, methods=["post"], permission_classes=[IsAdminUserRole], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        ids = request.data.get("ids", [])
+        if not ids:
+            return Response({"detail": "ids list is required."}, status=status.HTTP_400_BAD_REQUEST)
+        deleted_count, _ = StudentGroup.objects.filter(id__in=ids).delete()
+        return Response({"detail": f"{deleted_count} group(s) deleted."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAdminUserRole], url_path="add-members")
+    def add_members(self, request, pk=None):
+        group = self.get_object()
+        member_ids = request.data.get("member_ids", [])
+        if not member_ids:
+            return Response({"detail": "member_ids is required."}, status=status.HTTP_400_BAD_REQUEST)
+        students = User.objects.filter(id__in=member_ids, role="STUDENT")
+        group.members.add(*students)
+        return Response(StudentGroupSerializer(group, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAdminUserRole], url_path="remove-members")
+    def remove_members(self, request, pk=None):
+        group = self.get_object()
+        member_ids = request.data.get("member_ids", [])
+        if not member_ids:
+            return Response({"detail": "member_ids is required."}, status=status.HTTP_400_BAD_REQUEST)
+        students = User.objects.filter(id__in=member_ids)
+        group.members.remove(*students)
+        return Response(StudentGroupSerializer(group, context={"request": request}).data)
+
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated], url_path="my-groups")
+    def my_groups(self, request):
+        """Returns all groups the current student belongs to."""
+        if request.user.role != "STUDENT":
+            return Response({"detail": "Only students can access this endpoint."}, status=status.HTTP_403_FORBIDDEN)
+        groups = StudentGroup.objects.filter(members=request.user).select_related("course").prefetch_related("members")
+        serializer = StudentGroupSerializer(groups, many=True, context={"request": request})
+        return Response(serializer.data)

@@ -2,7 +2,7 @@ from rest_framework import serializers, exceptions
 from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Course, StudentCourse
+from .models import Course, StudentCourse, StudentGroup
 from config.validators import validate_profile_picture
 import secrets
 import string
@@ -609,3 +609,44 @@ class AdminProfileUpdateSerializer(serializers.ModelSerializer):
             "email": instance.email,
             "role": instance.role,
         }
+
+
+class StudentGroupMemberSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for group member listing."""
+    class Meta:
+        model = User
+        fields = ["id", "username", "first_name", "last_name", "email"]
+        read_only_fields = fields
+
+
+class StudentGroupSerializer(serializers.ModelSerializer):
+    course_name = serializers.CharField(source="course.name", read_only=True)
+    member_count = serializers.SerializerMethodField()
+    members_detail = StudentGroupMemberSerializer(source="members", many=True, read_only=True)
+    member_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=User.objects.filter(role="STUDENT"),
+        source="members",
+        write_only=True,
+        required=False,
+    )
+
+    class Meta:
+        model = StudentGroup
+        fields = [
+            "id",
+            "name",
+            "description",
+            "course",
+            "course_name",
+            "member_count",
+            "members_detail",
+            "member_ids",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "course_name", "member_count", "members_detail"]
+
+    def get_member_count(self, obj):
+        return obj.members.count()
+

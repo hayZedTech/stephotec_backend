@@ -268,6 +268,32 @@ class StudentCourse(models.Model):
         return candidate
 
 
+
+# Student Group
+class StudentGroup(models.Model):
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name="student_groups",
+    )
+    members = models.ManyToManyField(
+        User,
+        blank=True,
+        related_name="student_groups",
+        limit_choices_to={"role": "STUDENT"},
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.course.name})"
+
+
 # Proxy Models for Separate Django Admin Tables
 class StudentUser(User):
     class Meta:
