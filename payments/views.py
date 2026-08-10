@@ -35,7 +35,7 @@ class PaymentViewSet(
         return Payment.objects.select_related(
             "student_course__student",
             "student_course__course",
-        ).all()
+        ).filter(student_course__student__is_deleted=False)
 
     @action(detail=True, methods=["get"], url_path="history", permission_classes=[IsAuthenticated])
     def history(self, request, pk=None):
