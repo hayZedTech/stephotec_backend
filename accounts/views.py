@@ -31,7 +31,7 @@ from .serializers import (
     StudentGroupSerializer,
 )
 from .services import FileUploadService
-from notifications.services import send_student_notification
+from notifications.services import send_student_notification, notify_admins
 
 User = get_user_model()
 
@@ -433,6 +433,26 @@ class StudentProfileActivationView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
+
+        # Dispatch notification alert to all admins
+        try:
+            student_name = user.get_full_name() or user.username
+            notify_admins(
+                title="Student Profile Activated",
+                message=f"Student '{student_name}' ({user.username}) has successfully activated their profile.",
+                alert_type="STUDENT_ACTION",
+                triggered_by=user,
+                related_object_id=user.id,
+            )
+        except Exception:
+            pass
+
+        log_action(
+            user,
+            user,
+            "ACTIVATE_PROFILE",
+        )
+
         return Response(
             {
                 "message": "Profile activated successfully.",
