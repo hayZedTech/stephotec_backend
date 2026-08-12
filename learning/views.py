@@ -1254,10 +1254,22 @@ class QuizViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        queryset = Quiz.objects.all()
+
+        course_param = self.request.query_params.get("course")
+        if course_param:
+            queryset = queryset.filter(
+                models.Q(course_id=course_param) | models.Q(courses__id=course_param)
+            )
+
         if user.role == "ADMIN":
-            return Quiz.objects.all()
+            return queryset.distinct()
+
         student_course_ids = user.courses.values_list("course_id", flat=True)
-        return Quiz.objects.filter(is_published=True, course_id__in=student_course_ids)
+        return queryset.filter(
+            models.Q(course_id__in=student_course_ids) | models.Q(courses__id__in=student_course_ids),
+            is_published=True
+        ).distinct()
 
     def create(self, request, *args, **kwargs):
         if request.user.role != "ADMIN":

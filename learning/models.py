@@ -488,8 +488,16 @@ class Quiz(models.Model):
 
     course = models.ForeignKey(
         Course,
-        on_delete=models.CASCADE,
-        related_name="quizzes"
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="primary_quizzes"
+    )
+    courses = models.ManyToManyField(
+        Course,
+        related_name="quizzes",
+        blank=True,
+        help_text="Courses that can access this quiz."
     )
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)

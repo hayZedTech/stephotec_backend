@@ -1,5 +1,6 @@
 from rest_framework import serializers
 import random
+from accounts.models import Course
 from .models import (
     LearningContent,
     Assignment,
@@ -437,8 +438,15 @@ class QuizQuestionPublicSerializer(serializers.ModelSerializer):
 
 
 class QuizSerializer(serializers.ModelSerializer):
-    course_name = serializers.CharField(source="course.name", read_only=True)
-    course_code = serializers.CharField(source="course.code_prefix", read_only=True)
+    course_name = serializers.SerializerMethodField()
+    course_code = serializers.CharField(source="course.code_prefix", read_only=True, allow_null=True)
+    courses_details = serializers.SerializerMethodField()
+    course_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Course.objects.all(),
+        many=True,
+        required=False,
+        source="courses"
+    )
     questions_count = serializers.IntegerField(source="questions.count", read_only=True)
     total_points = serializers.SerializerMethodField()
 
@@ -447,6 +455,9 @@ class QuizSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "course",
+            "courses",
+            "course_ids",
+            "courses_details",
             "course_name",
             "course_code",
             "title",
@@ -462,8 +473,48 @@ class QuizSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def get_courses_details(self, obj):
+        return [
+            {
+                "id": c.id,
+                "name": c.name,
+                "code_prefix": c.code_prefix,
+            }
+            for c in obj.courses.all()
+        ]
+
+    def get_course_name(self, obj):
+        names = [c.name for c in obj.courses.all()]
+        if not names and obj.course:
+            names = [obj.course.name]
+        return ", ".join(names) if names else "Unassigned"
+
     def get_total_points(self, obj):
         return sum(q.points for q in obj.questions.all())
+
+    def create(self, validated_data):
+        courses = validated_data.pop("courses", [])
+        if "course" in validated_data and validated_data["course"] and validated_data["course"] not in courses:
+            courses.append(validated_data["course"])
+        
+        if courses and not validated_data.get("course"):
+            validated_data["course"] = courses[0]
+
+        quiz = super().create(validated_data)
+        if courses:
+            quiz.courses.set(courses)
+        return quiz
+
+    def update(self, instance, validated_data):
+        courses = validated_data.pop("courses", None)
+        if courses is not None:
+            if "course" not in validated_data:
+                validated_data["course"] = courses[0] if courses else None
+            instance.courses.set(courses)
+        elif "course" in validated_data and validated_data["course"]:
+            instance.courses.add(validated_data["course"])
+
+        return super().update(instance, validated_data)
 
 
 class QuizDetailSerializer(QuizSerializer):
