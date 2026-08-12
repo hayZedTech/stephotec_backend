@@ -1,6 +1,9 @@
 from rest_framework import serializers
 import random
-from accounts.models import Course
+from django.contrib.auth import get_user_model
+from accounts.models import Course, StudentGroup
+User = get_user_model()
+
 from .models import (
     LearningContent,
     Assignment,
@@ -20,6 +23,7 @@ from .models import (
     QuizQuestion,
     QuestionOption,
     QuizAttempt,
+    ClassMaterial,
 )
 
 
@@ -558,4 +562,59 @@ class QuizAttemptSerializer(serializers.ModelSerializer):
             "completed_at",
         ]
         read_only_fields = ["id", "completed_at"]
+
+
+class ClassMaterialSerializer(serializers.ModelSerializer):
+    assigned_group_ids = serializers.PrimaryKeyRelatedField(
+        queryset=StudentGroup.objects.all(),
+        many=True,
+        required=False,
+        source="assigned_groups"
+    )
+    assigned_student_ids = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role="STUDENT"),
+        many=True,
+        required=False,
+        source="assigned_students"
+    )
+    assigned_groups_details = serializers.SerializerMethodField()
+    assigned_students_details = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, allow_null=True)
+
+    class Meta:
+        model = ClassMaterial
+        fields = [
+            "id",
+            "title",
+            "description",
+            "file",
+            "file_name",
+            "file_size",
+            "assigned_groups",
+            "assigned_group_ids",
+            "assigned_groups_details",
+            "assigned_students",
+            "assigned_student_ids",
+            "assigned_students_details",
+            "created_by",
+            "created_by_name",
+            "is_deleted",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+
+    def get_assigned_groups_details(self, obj):
+        return [{"id": g.id, "name": g.name} for g in obj.assigned_groups.all()]
+
+    def get_assigned_students_details(self, obj):
+        return [
+            {
+                "id": s.id,
+                "username": s.username,
+                "full_name": s.get_full_name() or s.username,
+            }
+            for s in obj.assigned_students.all()
+        ]
+
 

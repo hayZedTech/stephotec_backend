@@ -20,6 +20,7 @@ from .views import (
     QuizQuestionViewSet,
     QuestionOptionViewSet,
     QuizAttemptViewSet,
+    ClassMaterialViewSet,
 )
 
 router = DefaultRouter()
@@ -41,6 +42,7 @@ router.register(r"quizzes", QuizViewSet, basename="quiz")
 router.register(r"quiz-questions", QuizQuestionViewSet, basename="quiz-question")
 router.register(r"quiz-options", QuestionOptionViewSet, basename="quiz-option")
 router.register(r"quiz-attempts", QuizAttemptViewSet, basename="quiz-attempt")
+router.register(r"class-materials", ClassMaterialViewSet, basename="class-material")
 
 urlpatterns = [
     path("certificates/verify/", PublicCertificateVerifyView.as_view(), name="certificate_verify"),

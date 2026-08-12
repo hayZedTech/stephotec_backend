@@ -210,3 +210,19 @@ class FileUploadService:
         except Exception as e:
             raise ValidationError(f"Upload failed: {str(e)}")
 
+    @staticmethod
+    def upload_class_material(file):
+        """Upload class file/code archive to Cloudinary (50MB max)"""
+        try:
+            ext = file.name.split('.')[-1].lower()
+            res_type = 'video' if ext in {'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv'} else 'auto'
+            result = cloudinary.uploader.upload(
+                file,
+                folder="stephotec/class-materials",
+                resource_type=res_type,
+            )
+            return result['secure_url']
+        except Exception as e:
+            raise ValidationError(f"Upload failed: {str(e)}")
+
+

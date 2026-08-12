@@ -34,6 +34,7 @@ from .models import (
     QuizQuestion,
     QuestionOption,
     QuizAttempt,
+    ClassMaterial,
 )
 from .serializers import (
     LearningContentSerializer,
@@ -55,6 +56,7 @@ from .serializers import (
     QuizQuestionSerializer,
     QuestionOptionSerializer,
     QuizAttemptSerializer,
+    ClassMaterialSerializer,
 )
 from accounts.permissions import IsAdminUserRole
 from accounts.models import StudentCourse, StudentGroup
@@ -1474,4 +1476,88 @@ class QuizAttemptViewSet(viewsets.ReadOnlyModelViewSet):
         if user.role == "ADMIN":
             return QuizAttempt.objects.all()
         return QuizAttempt.objects.filter(student=user)
+
+
+class ClassMaterialViewSet(viewsets.ModelViewSet):
+    serializer_class = ClassMaterialSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["title", "description", "file_name"]
+    ordering_fields = ["created_at"]
+    ordering = ["-created_at"]
+
+    def get_queryset(self):
+        user = self.request.user
+        queryset = ClassMaterial.objects.filter(is_deleted=False)
+
+        if user.role == "ADMIN":
+            return queryset.distinct()
+
+        # Student access
+        student_group_ids = user.student_groups.values_list("id", flat=True)
+        return queryset.filter(
+            models.Q(assigned_students=user) | models.Q(assigned_groups__id__in=student_group_ids)
+        ).distinct()
+
+    def create(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can upload class materials"}, status=status.HTTP_403_FORBIDDEN)
+        
+        file_obj = request.FILES.get("file")
+        file_url = request.data.get("file_url", "")
+        file_name = request.data.get("file_name", "")
+        file_size = request.data.get("file_size", "")
+
+        if file_obj:
+            file_name = file_obj.name
+            size_mb = file_obj.size / (1024 * 1024)
+            file_size = f"{size_mb:.1f} MB" if size_mb >= 1 else f"{file_obj.size / 1024:.0f} KB"
+            file_url = FileUploadService.upload_class_material(file_obj)
+
+        if not file_url:
+            return Response({"detail": "Please select a class file to upload."}, status=status.HTTP_400_BAD_REQUEST)
+
+        data = request.data.copy()
+        data["file"] = file_url
+        if file_name:
+            data["file_name"] = file_name
+        if file_size:
+            data["file_size"] = file_size
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save(created_by=request.user)
+
+        # Notify assigned students
+        student_ids = set()
+        for s in instance.assigned_students.all():
+            student_ids.add(s.id)
+        for g in instance.assigned_groups.all():
+            for m in g.members.all():
+                student_ids.add(m.id)
+
+        for sid in student_ids:
+            try:
+                st = User.objects.get(id=sid)
+                send_student_notification(
+                    student=st,
+                    title="New Class File Received",
+                    message=f"Class file '{instance.title}' has been uploaded and is ready for download.",
+                    notification_type="INFO",
+                    created_by=request.user,
+                )
+            except User.DoesNotExist:
+                pass
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can delete class materials"}, status=status.HTTP_403_FORBIDDEN)
+        instance = self.get_object()
+        instance.is_deleted = True
+        instance.save()
+        return Response({"detail": "Class material deleted successfully"}, status=status.HTTP_200_OK)
+
 

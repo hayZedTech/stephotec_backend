@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
-from accounts.models import Course, StudentCourse
+from accounts.models import Course, StudentCourse, StudentGroup
 User = get_user_model()
 
 
@@ -595,5 +595,42 @@ class QuizAttempt(models.Model):
 
     def __str__(self):
         return f"{self.student.username} - {self.quiz.title} ({self.score_percentage}%)"
+
+
+class ClassMaterial(models.Model):
+    """Daily class code, files, or folders sent directly to student groups or individual students"""
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    file = models.URLField(help_text="Cloudinary URL for uploaded class file or code archive.")
+    file_name = models.CharField(max_length=255, blank=True)
+    file_size = models.CharField(max_length=50, blank=True)
+    assigned_groups = models.ManyToManyField(
+        StudentGroup,
+        blank=True,
+        related_name="class_materials"
+    )
+    assigned_students = models.ManyToManyField(
+        User,
+        blank=True,
+        related_name="class_materials",
+        limit_choices_to={"role": "STUDENT"}
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sent_class_materials"
+    )
+    is_deleted = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Class Material: {self.title}"
+
 
 
