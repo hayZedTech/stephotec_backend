@@ -10,7 +10,7 @@ class IsAdmin(IsAuthenticated):
         return super().has_permission(request, view) and request.user.role == "ADMIN"
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = AuditLog.objects.all()
+    queryset = AuditLog.objects.select_related("actor", "target_user").all()
     serializer_class = AuditLogSerializer
     permission_classes = [IsAdmin]
     pagination_class = None

@@ -76,10 +76,11 @@ class LearningContentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = LearningContent.objects.select_related("course")
         if user.role == "ADMIN":
-            return LearningContent.objects.all()
+            return qs.all()
         student_course_ids = user.courses.values_list("course_id", flat=True)
-        return LearningContent.objects.filter(is_published=True, course_id__in=student_course_ids)
+        return qs.filter(is_published=True, course_id__in=student_course_ids)
 
     def _handle_file_upload(self, request, instance=None):
         """Upload file to Cloudinary and return URL, or None if no file."""
@@ -127,10 +128,11 @@ class AssignmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = Assignment.objects.select_related("course").prefetch_related("submissions")
         if user.role == "ADMIN":
-            return Assignment.objects.all()
+            return qs.all()
         student_course_ids = user.courses.values_list("course_id", flat=True)
-        return Assignment.objects.filter(status="PUBLISHED", course_id__in=student_course_ids)
+        return qs.filter(status="PUBLISHED", course_id__in=student_course_ids)
 
     def create(self, request, *args, **kwargs):
         if request.user.role != "ADMIN":
@@ -167,9 +169,10 @@ class AssignmentSubmissionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = AssignmentSubmission.objects.select_related("assignment", "student", "graded_by")
         if user.role == "ADMIN":
-            return AssignmentSubmission.objects.all()
-        return AssignmentSubmission.objects.filter(student=user)
+            return qs.all()
+        return qs.filter(student=user)
 
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
@@ -386,7 +389,8 @@ class CertificateViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Certificate.objects.all() if user.role == "ADMIN" else Certificate.objects.filter(student_course__student=user)
+        base_qs = Certificate.objects.select_related("student_course__student", "student_course__course", "issued_by")
+        qs = base_qs.all() if user.role == "ADMIN" else base_qs.filter(student_course__student=user)
         student_id = (
             self.request.query_params.get("student_id")
             or self.request.query_params.get("student_course__student")
@@ -792,7 +796,7 @@ class StudentLearningContentViewSet(viewsets.ModelViewSet):
     ordering = ["-assigned_at"]
 
     def get_queryset(self):
-        return StudentLearningContent.objects.all()
+        return StudentLearningContent.objects.select_related("student_course", "learning_content").all()
 
     @action(detail=False, methods=["post"], permission_classes=[IsAdminUserRole])
     def assign_to_students(self, request):
@@ -1256,7 +1260,7 @@ class QuizViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Quiz.objects.all()
+        queryset = Quiz.objects.select_related("course").prefetch_related("courses", "questions__options")
 
         course_param = self.request.query_params.get("course")
         if course_param:
@@ -1444,7 +1448,7 @@ class QuizQuestionViewSet(viewsets.ModelViewSet):
     filterset_fields = ["quiz"]
 
     def get_queryset(self):
-        return QuizQuestion.objects.all().order_by("order", "id")
+        return QuizQuestion.objects.select_related("quiz").prefetch_related("options").all().order_by("order", "id")
 
     def create(self, request, *args, **kwargs):
         if request.user.role != "ADMIN":
@@ -1473,9 +1477,10 @@ class QuizAttemptViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = QuizAttempt.objects.select_related("student", "quiz")
         if user.role == "ADMIN":
-            return QuizAttempt.objects.all()
-        return QuizAttempt.objects.filter(student=user)
+            return qs.all()
+        return qs.filter(student=user)
 
 
 class ClassMaterialViewSet(viewsets.ModelViewSet):
@@ -1489,68 +1494,189 @@ class ClassMaterialViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = ClassMaterial.objects.filter(is_deleted=False)
+        base_qs = ClassMaterial.objects.filter(is_deleted=False)
 
         if user.role == "ADMIN":
-            return queryset.distinct()
+            return base_qs.select_related("created_by").prefetch_related("assigned_groups", "assigned_students").order_by("-created_at")
 
         # Student access
         student_group_ids = user.student_groups.values_list("id", flat=True)
-        return queryset.filter(
-            models.Q(assigned_students=user) | models.Q(assigned_groups__id__in=student_group_ids)
-        ).distinct()
+        return (
+            base_qs.filter(
+                models.Q(assigned_students=user) | models.Q(assigned_groups__id__in=student_group_ids)
+            )
+            .distinct()
+            .select_related("created_by")
+            .prefetch_related("assigned_groups", "assigned_students")
+            .order_by("-created_at")
+        )
 
     def create(self, request, *args, **kwargs):
         if request.user.role != "ADMIN":
             return Response({"detail": "Only admins can upload class materials"}, status=status.HTTP_403_FORBIDDEN)
         
-        file_obj = request.FILES.get("file")
-        file_url = request.data.get("file_url", "")
-        file_name = request.data.get("file_name", "")
-        file_size = request.data.get("file_size", "")
+        file_objs = request.FILES.getlist("files")
+        
+        uploaded_files_data = []
 
-        if file_obj:
-            file_name = file_obj.name
-            size_mb = file_obj.size / (1024 * 1024)
-            file_size = f"{size_mb:.1f} MB" if size_mb >= 1 else f"{file_obj.size / 1024:.0f} KB"
-            file_url = FileUploadService.upload_class_material(file_obj)
+        if file_objs:
+            for file_obj in file_objs:
+                file_name = file_obj.name
+                size_mb = file_obj.size / (1024 * 1024)
+                file_size = f"{size_mb:.1f} MB" if size_mb >= 1 else f"{file_obj.size / 1024:.0f} KB"
+                file_url = FileUploadService.upload_class_material(file_obj)
+                
+                if file_url:
+                    uploaded_files_data.append({
+                        "url": file_url,
+                        "name": file_name,
+                        "size": file_size
+                    })
 
-        if not file_url:
-            return Response({"detail": "Please select a class file to upload."}, status=status.HTTP_400_BAD_REQUEST)
+        # For backward compatibility if single file was sent
+        single_file_obj = request.FILES.get("file")
+        if single_file_obj and not file_objs:
+            file_name = single_file_obj.name
+            size_mb = single_file_obj.size / (1024 * 1024)
+            file_size = f"{size_mb:.1f} MB" if size_mb >= 1 else f"{single_file_obj.size / 1024:.0f} KB"
+            file_url = FileUploadService.upload_class_material(single_file_obj)
+            if file_url:
+                uploaded_files_data.append({
+                    "url": file_url,
+                    "name": file_name,
+                    "size": file_size
+                })
 
+        if not uploaded_files_data:
+            return Response({"detail": "Please select class files to upload."}, status=status.HTTP_400_BAD_REQUEST)
+
+        import json
         data = request.data.copy()
-        data["file"] = file_url
-        if file_name:
-            data["file_name"] = file_name
-        if file_size:
-            data["file_size"] = file_size
+        data["files"] = json.dumps(uploaded_files_data)
 
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         instance = serializer.save(created_by=request.user)
 
+        # Explicitly associate M2M assigned groups and assigned students from request payload
+        group_ids = request.data.getlist("assigned_group_ids")
+        student_ids = request.data.getlist("assigned_student_ids")
+
+        if group_ids:
+            instance.assigned_groups.set(group_ids)
+        if student_ids:
+            instance.assigned_students.set(student_ids)
+
         # Notify assigned students
-        student_ids = set()
+        notify_student_ids = set()
         for s in instance.assigned_students.all():
-            student_ids.add(s.id)
+            notify_student_ids.add(s.id)
         for g in instance.assigned_groups.all():
             for m in g.members.all():
-                student_ids.add(m.id)
+                notify_student_ids.add(m.id)
 
-        for sid in student_ids:
+        for sid in notify_student_ids:
             try:
                 st = User.objects.get(id=sid)
                 send_student_notification(
                     student=st,
                     title="New Class File Received",
-                    message=f"Class file '{instance.title}' has been uploaded and is ready for download.",
+                    message=f"Class material '{instance.title}' has been uploaded and is ready for download.",
                     notification_type="INFO",
                     created_by=request.user,
                 )
             except User.DoesNotExist:
                 pass
 
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can edit class materials"}, status=status.HTTP_403_FORBIDDEN)
+            
+        instance = self.get_object()
+        
+        # Get currently assigned students to compute difference
+        old_student_ids = set()
+        for s in instance.assigned_students.all():
+            old_student_ids.add(s.id)
+        for g in instance.assigned_groups.all():
+            for m in g.members.all():
+                old_student_ids.add(m.id)
+                
+        data = request.data.copy()
+        
+        # Handle files update
+        # 1. Existing files to keep (passed as JSON string in 'existing_files' or similar)
+        import json
+        existing_files = data.get("existing_files", "[]")
+        try:
+            if isinstance(existing_files, str):
+                kept_files = json.loads(existing_files)
+            else:
+                kept_files = existing_files
+        except json.JSONDecodeError:
+            kept_files = []
+            
+        # 2. New files to upload
+        file_objs = request.FILES.getlist("files")
+        uploaded_files_data = kept_files.copy()
+        
+        if file_objs:
+            for file_obj in file_objs:
+                file_name = file_obj.name
+                size_mb = file_obj.size / (1024 * 1024)
+                file_size = f"{size_mb:.1f} MB" if size_mb >= 1 else f"{file_obj.size / 1024:.0f} KB"
+                file_url = FileUploadService.upload_class_material(file_obj)
+                
+                if file_url:
+                    uploaded_files_data.append({
+                        "url": file_url,
+                        "name": file_name,
+                        "size": file_size
+                    })
+                    
+        # Update files in data if there's any change
+        data["files"] = json.dumps(uploaded_files_data)
+        
+        serializer = self.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        
+        # Update M2M
+        group_ids = request.data.getlist("assigned_group_ids")
+        student_ids = request.data.getlist("assigned_student_ids")
+
+        # If they were sent in the request, update them
+        if "assigned_group_ids" in request.data:
+            instance.assigned_groups.set(group_ids)
+        if "assigned_student_ids" in request.data:
+            instance.assigned_students.set(student_ids)
+            
+        # Get newly assigned students
+        new_student_ids = set()
+        for s in instance.assigned_students.all():
+            new_student_ids.add(s.id)
+        for g in instance.assigned_groups.all():
+            for m in g.members.all():
+                new_student_ids.add(m.id)
+                
+        # Send notifications ONLY to newly added students
+        newly_added_ids = new_student_ids - old_student_ids
+        for sid in newly_added_ids:
+            try:
+                st = User.objects.get(id=sid)
+                send_student_notification(
+                    student=st,
+                    title="New Class File Received",
+                    message=f"Class material '{instance.title}' has been uploaded and is ready for download.",
+                    notification_type="INFO",
+                    created_by=request.user,
+                )
+            except User.DoesNotExist:
+                pass
+
+        return Response(self.get_serializer(instance).data)
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role != "ADMIN":
@@ -1559,5 +1685,6 @@ class ClassMaterialViewSet(viewsets.ModelViewSet):
         instance.is_deleted = True
         instance.save()
         return Response({"detail": "Class material deleted successfully"}, status=status.HTTP_200_OK)
+
 
 

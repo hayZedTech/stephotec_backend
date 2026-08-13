@@ -25,7 +25,7 @@ class AdminAlertViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = None
 
     def get_queryset(self):
-        return AdminAlert.objects.all()
+        return AdminAlert.objects.select_related("triggered_by").all()
 
     @action(detail=True, methods=["post"], url_path="mark_read")
     def mark_read(self, request, pk=None):

@@ -601,9 +601,14 @@ class ClassMaterial(models.Model):
     """Daily class code, files, or folders sent directly to student groups or individual students"""
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    file = models.URLField(help_text="Cloudinary URL for uploaded class file or code archive.")
+    file = models.URLField(blank=True, null=True, help_text="Cloudinary URL for uploaded class file or code archive.")
     file_name = models.CharField(max_length=255, blank=True)
     file_size = models.CharField(max_length=50, blank=True)
+    files = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of file objects: [{'url': '...', 'name': '...', 'size': '...'}]"
+    )
     assigned_groups = models.ManyToManyField(
         StudentGroup,
         blank=True,
