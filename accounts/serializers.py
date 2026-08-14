@@ -22,6 +22,8 @@ class CourseSerializer(serializers.ModelSerializer):
             "code_prefix",
             "is_active",
             "default_fee",
+            "duration_value",
+            "duration_unit",
             "student_count",
             "created_at",
         ]
@@ -95,6 +97,7 @@ class AdminStudentCreationSerializer(serializers.Serializer):
     phone = serializers.CharField(required=False, allow_blank=True)
     additional_phone = serializers.CharField(required=False, allow_blank=True)
     date_of_birth = serializers.DateField(required=False, allow_null=True)
+    enrollment_date = serializers.DateField(required=False, allow_null=True)
     gender = serializers.ChoiceField(choices=[("MALE", "Male"), ("FEMALE", "Female"), ("OTHER", "Other")], required=False, allow_blank=True)
     address = serializers.CharField(required=False, allow_blank=True)
     state_of_origin = serializers.CharField(required=False, allow_blank=True)
@@ -126,6 +129,9 @@ class AdminStudentCreationSerializer(serializers.Serializer):
         
         if mutable_data.get("date_of_birth") == "":
             mutable_data["date_of_birth"] = None
+
+        if mutable_data.get("enrollment_date") == "":
+            mutable_data["enrollment_date"] = None
             
         if mutable_data.get("profile_picture_url") == "":
             mutable_data["profile_picture_url"] = None
@@ -168,6 +174,7 @@ class AdminStudentCreationSerializer(serializers.Serializer):
             phone=validated_data.get("phone", ""),
             additional_phone=validated_data.get("additional_phone", ""),
             date_of_birth=validated_data.get("date_of_birth"),
+            enrollment_date=validated_data.get("enrollment_date"),
             gender=validated_data.get("gender", ""),
             address=validated_data.get("address", ""),
             state_of_origin=validated_data.get("state_of_origin", ""),
@@ -206,6 +213,7 @@ class AdminStudentCreationSerializer(serializers.Serializer):
         instance.phone = validated_data.get("phone", instance.phone)
         instance.additional_phone = validated_data.get("additional_phone", instance.additional_phone)
         instance.date_of_birth = validated_data.get("date_of_birth", instance.date_of_birth)
+        instance.enrollment_date = validated_data.get("enrollment_date", instance.enrollment_date)
         instance.gender = validated_data.get("gender", instance.gender)
         instance.address = validated_data.get("address", instance.address)
         instance.state_of_origin = validated_data.get("state_of_origin", instance.state_of_origin)
@@ -246,6 +254,7 @@ class AdminStudentCreationSerializer(serializers.Serializer):
             "phone": instance.phone,
             "additional_phone": instance.additional_phone,
             "date_of_birth": instance.date_of_birth,
+            "enrollment_date": instance.enrollment_date,
             "gender": gender_display,
             "address": instance.address,
             "state_of_origin": instance.state_of_origin,
@@ -319,6 +328,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data["phone"] = self.user.phone
         data["additional_phone"] = self.user.additional_phone
         data["date_of_birth"] = self.user.date_of_birth
+        data["enrollment_date"] = self.user.enrollment_date
         # Map gender values for display
         gender_display = self.user.gender
         if self.user.gender == "MALE":
@@ -425,6 +435,7 @@ class StudentProfileDetailSerializer(serializers.ModelSerializer):
             "phone",
             "additional_phone",
             "date_of_birth",
+            "enrollment_date",
             "gender",
             "address",
             "state_of_origin",
@@ -477,6 +488,7 @@ class StudentProfilePageSerializer(serializers.ModelSerializer):
             "job_title",
             "is_superuser",
             "date_of_birth",
+            "enrollment_date",
             "gender",
             "address",
             "state_of_origin",

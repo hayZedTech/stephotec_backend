@@ -28,10 +28,20 @@ class UserManager(DjangoUserManager):
 
 # Course
 class Course(models.Model):
+    class DurationUnit(models.TextChoices):
+        MONTHS = "MONTHS", "Months"
+        WEEKS = "WEEKS", "Weeks"
+
     name = models.CharField(max_length=255, unique=True)
     code_prefix = models.CharField(max_length=10, unique=True)
     is_active = models.BooleanField(default=True)
     default_fee = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    duration_value = models.PositiveIntegerField(null=True, blank=True, default=0)
+    duration_unit = models.CharField(
+        max_length=10,
+        choices=DurationUnit.choices,
+        default=DurationUnit.MONTHS,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     def __str__(self):
         return f"{self.name} ({self.code_prefix})"
@@ -87,6 +97,7 @@ class User(AbstractUser):
     phone = models.CharField(max_length=20, blank=True, null=True)
     additional_phone = models.CharField(max_length=20, blank=True, null=True)
     date_of_birth = models.DateField(blank=True, null=True)
+    enrollment_date = models.DateField(blank=True, null=True, help_text="Optional Date Joined for course duration tracking.")
     gender = models.CharField(
         max_length=20,
         choices=[("MALE", "Male"), ("FEMALE", "Female"), ("OTHER", "Other")],

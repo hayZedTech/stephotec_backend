@@ -3,5 +3,5 @@
     "autoApproveStudents": false,
     "maintenanceMode": false,
     "allowNewRegistrations": true,
-    "allowIdCardDownload": false
+    "allowIdCardDownload": true
 }
