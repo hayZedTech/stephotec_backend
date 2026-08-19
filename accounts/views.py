@@ -821,7 +821,7 @@ import os
 class AdminSettingsView(APIView):
     """
     Endpoint to load and update global system settings.
-    Saves state in a json file C:\stephotec_backend\system_settings.json.
+    Saves state in a json file system_settings.json.
     """
     permission_classes = []
 

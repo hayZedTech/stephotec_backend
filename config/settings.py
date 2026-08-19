@@ -278,8 +278,10 @@ EMAIL_BACKEND = env(
 )
 EMAIL_HOST = env("EMAIL_HOST", default="smtp.gmail.com")
 EMAIL_PORT = env.int("EMAIL_PORT", default=587)
-EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True if EMAIL_PORT == 587 else False)
+EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=True if EMAIL_PORT == 465 else False)
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Stephotec Computer Technologies Ltd <info@stephotec.com>")
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
 

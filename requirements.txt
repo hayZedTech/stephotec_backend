@@ -18,11 +18,13 @@ django-filter==25.2
 djangorestframework==3.17.1
 djangorestframework_simplejwt==5.5.1
 drf-spectacular==0.29.0
+gunicorn==23.0.0
 hyperlink==21.0.0
 idna==3.18
 Incremental==24.11.0
 inflection==0.5.1
 jsonschema==4.26.0
+uvicorn==0.34.0
 jsonschema-specifications==2025.9.1
 msgpack==1.2.1
 packaging==26.2

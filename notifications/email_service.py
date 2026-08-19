@@ -1,4 +1,5 @@
 import logging
+import threading
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 from django.utils.html import strip_tags
@@ -10,7 +11,15 @@ class EmailService:
     """Service to send branded HTML emails for Stephotec Computer Technologies Ltd."""
 
     @staticmethod
-    def _send_email(to_email, subject, html_content):
+    def _dispatch_send(msg, subject, to_email):
+        try:
+            msg.send(fail_silently=False)
+            logger.info(f"Email '{subject}' successfully sent to {to_email}")
+        except Exception as e:
+            logger.error(f"Failed to send email to {to_email}: {str(e)}")
+
+    @classmethod
+    def _send_email(cls, to_email, subject, html_content, async_send=True):
         if not to_email:
             logger.warning("No recipient email provided for EmailService.")
             return False
@@ -26,11 +35,15 @@ class EmailService:
                 to=[to_email],
             )
             msg.attach_alternative(html_content, "text/html")
-            msg.send(fail_silently=False)
-            logger.info(f"Email '{subject}' successfully sent to {to_email}")
+
+            if async_send:
+                t = threading.Thread(target=cls._dispatch_send, args=(msg, subject, to_email), daemon=True)
+                t.start()
+            else:
+                cls._dispatch_send(msg, subject, to_email)
             return True
         except Exception as e:
-            logger.error(f"Failed to send email to {to_email}: {str(e)}")
+            logger.error(f"Failed to initialize email to {to_email}: {str(e)}")
             return False
 
     @classmethod
