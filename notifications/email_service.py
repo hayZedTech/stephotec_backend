@@ -13,10 +13,13 @@ class EmailService:
     @staticmethod
     def _dispatch_send(msg, subject, to_email):
         try:
+            print(f"[EMAIL SENDING] Attempting to send '{subject}' to {to_email} via host={getattr(settings, 'EMAIL_HOST', None)} port={getattr(settings, 'EMAIL_PORT', None)} TLS={getattr(settings, 'EMAIL_USE_TLS', None)} SSL={getattr(settings, 'EMAIL_USE_SSL', None)} user={getattr(settings, 'EMAIL_HOST_USER', None)}...", flush=True)
             msg.send(fail_silently=False)
             logger.info(f"Email '{subject}' successfully sent to {to_email}")
+            print(f"[EMAIL SUCCESS] Email '{subject}' successfully sent to {to_email}!", flush=True)
         except Exception as e:
-            logger.error(f"Failed to send email to {to_email}: {str(e)}")
+            logger.error(f"Failed to send email to {to_email}: {str(e)}", exc_info=True)
+            print(f"[EMAIL FAILED] Failed to send email to {to_email}: {repr(e)}", flush=True)
 
     @classmethod
     def _send_email(cls, to_email, subject, html_content, async_send=True):

@@ -609,11 +609,14 @@ class RequestPasswordResetView(APIView):
         ).first()
 
         if user and user.email:
+            print(f"[PASSWORD RESET] Request received for existing user '{user.username}' ({user.email}). Dispatching email...", flush=True)
             uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
             token = default_token_generator.make_token(user)
             frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
             reset_url = f"{frontend_url}/reset-password?uid={uidb64}&token={token}"
             EmailService.send_password_reset_email(user, reset_url)
+        else:
+            print(f"[PASSWORD RESET] Request received for query '{query}', but NO MATCHING USER or NO EMAIL found in database! (user={user})", flush=True)
 
         return Response(
             {
