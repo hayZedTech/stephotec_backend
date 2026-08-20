@@ -282,6 +282,8 @@ EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Stephotec Computer Technologies Ltd <info@stephotec.com>")
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
+BREVO_API_KEY = env("BREVO_API_KEY", default="")
+RESEND_API_KEY = env("RESEND_API_KEY", default="")
 
 # Strictly enforce mutual exclusivity between TLS and SSL in Django
 _env_ssl = env.bool("EMAIL_USE_SSL", default=(EMAIL_PORT == 465))

@@ -1,5 +1,8 @@
+import json
 import logging
 import threading
+import urllib.error
+import urllib.request
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 from django.utils.html import strip_tags
@@ -11,8 +14,79 @@ class EmailService:
     """Service to send branded HTML emails for Stephotec Computer Technologies Ltd."""
 
     @staticmethod
-    def _dispatch_send(msg, subject, to_email):
+    def _send_via_brevo(api_key, from_email, to_email, subject, html_content, text_content):
+        url = "https://api.brevo.com/v3/smtp/email"
+        sender_name = "Stephotec Support"
+        sender_email = getattr(settings, "EMAIL_HOST_USER", "info@stephotec.com")
+        if "<" in from_email and ">" in from_email:
+            sender_name = from_email.split("<")[0].strip().strip('"')
+            sender_email = from_email.split("<")[1].split(">")[0].strip()
+
+        payload = {
+            "sender": {"name": sender_name, "email": sender_email},
+            "to": [{"email": to_email}],
+            "subject": subject,
+            "htmlContent": html_content,
+            "textContent": text_content,
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "api-key": api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return response.status in [200, 201, 202]
+
+    @staticmethod
+    def _send_via_resend(api_key, from_email, to_email, subject, html_content, text_content):
+        url = "https://api.resend.com/emails"
+        payload = {
+            "from": from_email,
+            "to": [to_email],
+            "subject": subject,
+            "html": html_content,
+            "text": text_content,
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return response.status in [200, 201, 202]
+
+    @classmethod
+    def _dispatch_send(cls, msg, subject, to_email, html_content, text_content, from_email):
+        brevo_key = getattr(settings, "BREVO_API_KEY", "").strip()
+        resend_key = getattr(settings, "RESEND_API_KEY", "").strip()
+
         try:
+            if brevo_key:
+                print(f"[EMAIL SENDING] Sending '{subject}' to {to_email} via Brevo HTTPS API (Port 443)...", flush=True)
+                cls._send_via_brevo(brevo_key, from_email, to_email, subject, html_content, text_content)
+                logger.info(f"Email '{subject}' successfully sent to {to_email} via Brevo API")
+                print(f"[EMAIL SUCCESS] Email '{subject}' successfully delivered to {to_email} via Brevo!", flush=True)
+                return
+
+            if resend_key:
+                print(f"[EMAIL SENDING] Sending '{subject}' to {to_email} via Resend HTTPS API (Port 443)...", flush=True)
+                cls._send_via_resend(resend_key, from_email, to_email, subject, html_content, text_content)
+                logger.info(f"Email '{subject}' successfully sent to {to_email} via Resend API")
+                print(f"[EMAIL SUCCESS] Email '{subject}' successfully delivered to {to_email} via Resend!", flush=True)
+                return
+
+            # Default Standard SMTP
             print(f"[EMAIL SENDING] Attempting to send '{subject}' to {to_email} via host={getattr(settings, 'EMAIL_HOST', None)} port={getattr(settings, 'EMAIL_PORT', None)} TLS={getattr(settings, 'EMAIL_USE_TLS', None)} SSL={getattr(settings, 'EMAIL_USE_SSL', None)} user={getattr(settings, 'EMAIL_HOST_USER', None)}...", flush=True)
             msg.send(fail_silently=False)
             logger.info(f"Email '{subject}' successfully sent to {to_email}")
@@ -40,10 +114,14 @@ class EmailService:
             msg.attach_alternative(html_content, "text/html")
 
             if async_send:
-                t = threading.Thread(target=cls._dispatch_send, args=(msg, subject, to_email), daemon=True)
+                t = threading.Thread(
+                    target=cls._dispatch_send,
+                    args=(msg, subject, to_email, html_content, text_content, from_email),
+                    daemon=True,
+                )
                 t.start()
             else:
-                cls._dispatch_send(msg, subject, to_email)
+                cls._dispatch_send(msg, subject, to_email, html_content, text_content, from_email)
             return True
         except Exception as e:
             logger.error(f"Failed to initialize email to {to_email}: {str(e)}")
