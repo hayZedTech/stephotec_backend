@@ -903,17 +903,20 @@ class StudentGroupViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = None
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["course"]
     search_fields = ["name", "description"]
     ordering_fields = ["name", "created_at"]
     ordering = ["-created_at"]
 
     def get_queryset(self):
         user = self.request.user
+        qs = StudentGroup.objects.prefetch_related("courses", "members").select_related("course")
+        course_id = self.request.query_params.get("course")
+        if course_id:
+            qs = qs.filter(models.Q(courses__id=course_id) | models.Q(course_id=course_id)).distinct()
         if user.role == "ADMIN":
-            return StudentGroup.objects.select_related("course").prefetch_related("members").all()
+            return qs
         # Students see only their own groups
-        return StudentGroup.objects.filter(members=user).select_related("course").prefetch_related("members")
+        return qs.filter(members=user).distinct()
 
     def get_permissions(self):
         if self.action in ["create", "update", "partial_update", "destroy", "bulk_delete"]:
@@ -922,7 +925,8 @@ class StudentGroupViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         group = serializer.save()
-        log_action(self.request.user, None, "CREATE", {"group": group.name, "course": group.course.name})
+        course_display = ", ".join(c.name for c in group.courses.all()) if group.courses.exists() else (group.course.name if group.course else "General")
+        log_action(self.request.user, None, "CREATE", {"group": group.name, "courses": course_display})
 
     def perform_destroy(self, instance):
         log_action(self.request.user, None, "DELETE", {"group": instance.name})
@@ -961,6 +965,6 @@ class StudentGroupViewSet(viewsets.ModelViewSet):
         """Returns all groups the current student belongs to."""
         if request.user.role != "STUDENT":
             return Response({"detail": "Only students can access this endpoint."}, status=status.HTTP_403_FORBIDDEN)
-        groups = StudentGroup.objects.filter(members=request.user).select_related("course").prefetch_related("members")
+        groups = StudentGroup.objects.filter(members=request.user).prefetch_related("courses", "members").select_related("course").distinct()
         serializer = StudentGroupSerializer(groups, many=True, context={"request": request})
         return Response(serializer.data)

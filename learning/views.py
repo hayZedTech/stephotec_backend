@@ -371,6 +371,63 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
         return Response(AttendanceSerializer(attendance).data)
 
+    @action(detail=False, methods=["post"], url_path="bulk-approve")
+    def bulk_approve(self, request):
+        """Admin bulk approves pending attendance records."""
+        ids = request.data.get("ids", [])
+        if not ids:
+            return Response({"detail": "No attendance IDs provided"}, status=status.HTTP_400_BAD_REQUEST)
+        records = Attendance.objects.filter(id__in=ids).select_related(
+            "student_course__student", "student_course__course"
+        )
+        approved_count = 0
+        now = timezone.now()
+        for attendance in records:
+            attendance.approval_status = "APPROVED"
+            attendance.approved_by = request.user
+            attendance.approved_at = now
+            attendance.save()
+            send_student_notification(
+                student=attendance.student_course.student,
+                title="Attendance Approved",
+                message=f"Your attendance for {attendance.date} in '{attendance.student_course.course.name}' has been approved.",
+                notification_type="SUCCESS",
+                created_by=request.user,
+                event_key="email_attendance",
+            )
+            approved_count += 1
+        return Response({"detail": f"{approved_count} attendance records approved successfully."})
+
+    @action(detail=False, methods=["post"], url_path="bulk-reject")
+    def bulk_reject(self, request):
+        """Admin bulk rejects pending attendance records."""
+        ids = request.data.get("ids", [])
+        remarks = request.data.get("remarks", "")
+        if not ids:
+            return Response({"detail": "No attendance IDs provided"}, status=status.HTTP_400_BAD_REQUEST)
+        records = Attendance.objects.filter(id__in=ids).select_related(
+            "student_course__student", "student_course__course"
+        )
+        rejected_count = 0
+        now = timezone.now()
+        for attendance in records:
+            attendance.approval_status = "REJECTED"
+            attendance.approved_by = request.user
+            attendance.approved_at = now
+            if remarks:
+                attendance.remarks = remarks
+            attendance.save()
+            send_student_notification(
+                student=attendance.student_course.student,
+                title="Attendance Rejected",
+                message=f"Your attendance for {attendance.date} in '{attendance.student_course.course.name}' was rejected." + (f" Reason: {attendance.remarks}" if attendance.remarks else ""),
+                notification_type="WARNING",
+                created_by=request.user,
+                event_key="email_attendance",
+            )
+            rejected_count += 1
+        return Response({"detail": f"{rejected_count} attendance records rejected successfully."})
+
     @action(detail=False, methods=["get"], url_path="pending")
     def pending(self, request):
         """Admin fetches all pending attendance records."""

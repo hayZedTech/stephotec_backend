@@ -632,7 +632,15 @@ class StudentGroupMemberSerializer(serializers.ModelSerializer):
 
 
 class StudentGroupSerializer(serializers.ModelSerializer):
-    course_name = serializers.CharField(source="course.name", read_only=True)
+    course_name = serializers.SerializerMethodField()
+    courses_detail = serializers.SerializerMethodField()
+    course_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Course.objects.all(),
+        source="courses",
+        write_only=True,
+        required=False,
+    )
     member_count = serializers.SerializerMethodField()
     members_detail = StudentGroupMemberSerializer(source="members", many=True, read_only=True)
     member_ids = serializers.PrimaryKeyRelatedField(
@@ -651,14 +659,78 @@ class StudentGroupSerializer(serializers.ModelSerializer):
             "description",
             "course",
             "course_name",
+            "courses_detail",
+            "course_ids",
             "member_count",
             "members_detail",
             "member_ids",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "course_name", "member_count", "members_detail"]
+        read_only_fields = ["id", "created_at", "updated_at", "course_name", "courses_detail", "member_count", "members_detail"]
+        extra_kwargs = {
+            "course": {"required": False, "allow_null": True},
+        }
 
     def get_member_count(self, obj):
         return obj.members.count()
+
+    def get_courses_detail(self, obj):
+        try:
+            courses_list = list(obj.courses.all())
+            if courses_list:
+                return CourseSerializer(courses_list, many=True).data
+        except Exception:
+            pass
+        if obj.course:
+            return CourseSerializer([obj.course], many=True).data
+        return []
+
+    def get_course_name(self, obj):
+        try:
+            courses_list = list(obj.courses.all())
+            if courses_list:
+                return ", ".join(c.name for c in courses_list)
+        except Exception:
+            pass
+        if obj.course:
+            return obj.course.name
+        return "General / All Courses"
+
+    def create(self, validated_data):
+        courses = validated_data.pop("courses", [])
+        members = validated_data.pop("members", [])
+        if "course" not in validated_data and courses:
+            validated_data["course"] = courses[0]
+        group = StudentGroup.objects.create(**validated_data)
+        if courses:
+            try:
+                group.courses.set(courses)
+            except Exception:
+                pass
+            if not group.course:
+                group.course = courses[0]
+                group.save(update_fields=["course"])
+        if members:
+            group.members.set(members)
+        return group
+
+    def update(self, instance, validated_data):
+        courses = validated_data.pop("courses", None)
+        members = validated_data.pop("members", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        if courses is not None:
+            try:
+                instance.courses.set(courses)
+            except Exception:
+                pass
+            if courses:
+                instance.course = courses[0]
+            else:
+                instance.course = None
+        if members is not None:
+            instance.members.set(members)
+        instance.save()
+        return instance
 

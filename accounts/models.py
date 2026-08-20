@@ -286,7 +286,14 @@ class StudentGroup(models.Model):
     description = models.TextField(blank=True, null=True)
     course = models.ForeignKey(
         Course,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        related_name="student_groups_single",
+        null=True,
+        blank=True,
+    )
+    courses = models.ManyToManyField(
+        Course,
+        blank=True,
         related_name="student_groups",
     )
     members = models.ManyToManyField(
@@ -302,7 +309,11 @@ class StudentGroup(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.name} ({self.course.name})"
+        if self.courses.exists():
+            return f"{self.name} ({', '.join(c.name for c in self.courses.all())})"
+        if self.course:
+            return f"{self.name} ({self.course.name})"
+        return self.name
 
 
 # Proxy Models for Separate Django Admin Tables
