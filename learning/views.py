@@ -345,6 +345,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             message=f"Your attendance for {attendance.date} in '{attendance.student_course.course.name}' has been approved.",
             notification_type="SUCCESS",
             created_by=request.user,
+            event_key="email_attendance",
         )
 
         return Response(AttendanceSerializer(attendance).data)
@@ -365,6 +366,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             message=f"Your attendance for {attendance.date} in '{attendance.student_course.course.name}' was rejected." + (f" Reason: {attendance.remarks}" if attendance.remarks else ""),
             notification_type="WARNING",
             created_by=request.user,
+            event_key="email_attendance",
         )
 
         return Response(AttendanceSerializer(attendance).data)
@@ -1584,6 +1586,7 @@ class ClassMaterialViewSet(viewsets.ModelViewSet):
                     message=f"Class material '{instance.title}' has been uploaded and is ready for download.",
                     notification_type="INFO",
                     created_by=request.user,
+                    event_key="email_class_materials",
                 )
             except User.DoesNotExist:
                 pass
@@ -1672,6 +1675,7 @@ class ClassMaterialViewSet(viewsets.ModelViewSet):
                     message=f"Class material '{instance.title}' has been uploaded and is ready for download.",
                     notification_type="INFO",
                     created_by=request.user,
+                    event_key="email_class_materials",
                 )
             except User.DoesNotExist:
                 pass

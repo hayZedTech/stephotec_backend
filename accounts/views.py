@@ -31,7 +31,7 @@ from .serializers import (
     StudentGroupSerializer,
 )
 from .services import FileUploadService
-from notifications.services import send_student_notification, notify_admins
+from notifications.services import send_student_notification, notify_admins, is_email_enabled
 
 User = get_user_model()
 
@@ -185,7 +185,7 @@ class AdminStudentManagementViewSet(
             notification_type="SUCCESS",
             created_by=request.user,
         )
-        if student.email and temporary_password:
+        if student.email and temporary_password and is_email_enabled("email_welcome"):
             try:
                 frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
                 activation_url = f"{frontend_url}/activate-profile"
@@ -319,6 +319,7 @@ class StudentCourseViewSet(viewsets.ModelViewSet):
             message=f"You have been enrolled in '{course_enrollment.course.name}'. Check your dashboard to access course materials.",
             notification_type="INFO",
             created_by=request.user,
+            event_key="email_course_enrollment",
         )
         
         return Response(
@@ -346,6 +347,7 @@ class StudentCourseViewSet(viewsets.ModelViewSet):
             message=f"Your course status for '{course_enrollment.course.name}' has been updated to {course_enrollment.status}.",
             notification_type="INFO",
             created_by=self.request.user,
+            event_key="email_course_enrollment",
         )
     
     def destroy(self, request, *args, **kwargs):
@@ -609,12 +611,15 @@ class RequestPasswordResetView(APIView):
         ).first()
 
         if user and user.email:
-            print(f"[PASSWORD RESET] Request received for existing user '{user.username}' ({user.email}). Dispatching email...", flush=True)
-            uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
-            token = default_token_generator.make_token(user)
-            frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
-            reset_url = f"{frontend_url}/reset-password?uid={uidb64}&token={token}"
-            EmailService.send_password_reset_email(user, reset_url)
+            if is_email_enabled("email_password_reset"):
+                print(f"[PASSWORD RESET] Request received for existing user '{user.username}' ({user.email}). Dispatching email...", flush=True)
+                uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+                token = default_token_generator.make_token(user)
+                frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+                reset_url = f"{frontend_url}/reset-password?uid={uidb64}&token={token}"
+                EmailService.send_password_reset_email(user, reset_url)
+            else:
+                print(f"[PASSWORD RESET] Password reset email is disabled in settings for user '{user.username}'.", flush=True)
         else:
             print(f"[PASSWORD RESET] Request received for query '{query}', but NO MATCHING USER or NO EMAIL found in database! (user={user})", flush=True)
 
@@ -835,6 +840,17 @@ class AdminSettingsView(APIView):
     def get_default_settings(self):
         return {
             "emailNotifications": True,
+            "email_welcome": True,
+            "email_password_reset": True,
+            "email_status_change": True,
+            "email_course_enrollment": True,
+            "email_class_materials": True,
+            "email_new_assignment": True,
+            "email_assignment_grading": True,
+            "email_attendance": False,
+            "email_quiz_results": True,
+            "email_certificate": True,
+            "email_payment_receipt": True,
             "autoApproveStudents": False,
             "maintenanceMode": False,
             "allowNewRegistrations": True,

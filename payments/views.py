@@ -86,6 +86,7 @@ class PaymentViewSet(
             message=f"A payment of ₦{entry.amount:,.2f} for '{course_name}' was recorded. Total Paid: ₦{payment.amount_paid:,.2f} (Status: {payment.status}).",
             notification_type="SUCCESS",
             created_by=request.user,
+            event_key="email_payment_receipt",
         )
 
         return Response(PaymentEntrySerializer(entry).data, status=201)

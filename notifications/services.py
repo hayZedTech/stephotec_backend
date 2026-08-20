@@ -1,3 +1,6 @@
+import os
+import json
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from .models import Notification, NotificationRecipient, AdminAlert
 from .email_service import EmailService
@@ -5,10 +8,33 @@ from .email_service import EmailService
 User = get_user_model()
 
 
-def send_student_notification(student, title, message, notification_type=Notification.Type.INFO, created_by=None):
+def is_email_enabled(event_key=None):
+    """
+    Checks whether email notifications are enabled globally and for a specific event.
+    Reads from system_settings.json.
+    """
+    settings_file = os.path.join(settings.BASE_DIR, "system_settings.json")
+    if not os.path.exists(settings_file):
+        return True
+
+    try:
+        with open(settings_file, "r") as f:
+            data = json.load(f)
+            # Master toggle
+            if not data.get("emailNotifications", True):
+                return False
+            # Specific event toggle if provided
+            if event_key and not data.get(event_key, True):
+                return False
+            return True
+    except Exception:
+        return True
+
+
+def send_student_notification(student, title, message, notification_type=Notification.Type.INFO, created_by=None, event_key=None):
     """
     Sends a system notification to a specific student user,
-    delivers to their portal feed, and dispatches an email notification.
+    delivers to their portal feed, and dispatches an email notification if enabled.
     """
     if not student:
         return None
@@ -31,11 +57,12 @@ def send_student_notification(student, title, message, notification_type=Notific
         recipient=student,
     )
 
-    # Also dispatch HTML email notification
-    try:
-        EmailService.send_notification_email(student, title, message)
-    except Exception:
-        pass
+    # Only dispatch HTML email notification if enabled in system settings
+    if is_email_enabled(event_key):
+        try:
+            EmailService.send_notification_email(student, title, message)
+        except Exception:
+            pass
 
     return notification
 
