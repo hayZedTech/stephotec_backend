@@ -345,3 +345,169 @@ info@stephotec.com | +234 802 250 8370
         </html>
         """
         return cls._send_email(user.email, subject, html_content)
+
+    @classmethod
+    def send_lecture_schedule_email(cls, student, schedule, custom_note=None, action_type="SCHEDULED"):
+        """
+        Sends branded lecture schedule notification or reminder to a student.
+        action_type can be "SCHEDULED" (new), "UPDATED" (updated), or "REMINDER" (manual/reminder broadcast).
+        """
+        if not student or not student.email:
+            return False
+
+        full_name = student.get_full_name() or student.username
+        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+        schedule_url = f"{frontend_url}/dashboard/schedule"
+
+        course_name = schedule.course.name if schedule.course else "General Program"
+        title = schedule.title
+
+        if action_type == "UPDATED":
+            subject = f"Timetable Update: {title} — Stephotec Portal"
+            badge_text = "Schedule Updated"
+            badge_color = "#b45309"
+            badge_bg = "#fef3c7"
+            intro_msg = f"The lecture schedule for <strong>{title}</strong> has been updated. Below are your latest class details:"
+        elif action_type == "REMINDER":
+            subject = f"Class Reminder: {title} — Stephotec Portal"
+            badge_text = "Lecture Reminder"
+            badge_color = "#1d4ed8"
+            badge_bg = "#dbeafe"
+            intro_msg = f"This is a reminder for your class <strong>{title}</strong>. Please check your schedule below:"
+        else:
+            subject = f"New Class Scheduled: {title} — Stephotec Portal"
+            badge_text = "New Class Scheduled"
+            badge_color = "#15803d"
+            badge_bg = "#dcfce7"
+            intro_msg = f"A new class schedule has been published for your course: <strong>{title}</strong>."
+
+        days_list = schedule.days_of_week or []
+        formatted_days = ", ".join([d.capitalize() for d in days_list]) if days_list else "Scheduled Days"
+
+        timing_rows_html = ""
+        timing_rows_text = ""
+        if schedule.day_times and isinstance(schedule.day_times, list) and len(schedule.day_times) > 0:
+            for dt in schedule.day_times:
+                d_name = str(dt.get("day", "")).capitalize()
+                st = dt.get("start_time", "")
+                et = dt.get("end_time", "")
+                try:
+                    import datetime
+                    st_fmt = datetime.datetime.strptime(st[:5], "%H:%M").strftime("%I:%M %p").lstrip("0")
+                except Exception:
+                    st_fmt = st
+                try:
+                    import datetime
+                    et_fmt = datetime.datetime.strptime(et[:5], "%H:%M").strftime("%I:%M %p").lstrip("0")
+                except Exception:
+                    et_fmt = et
+                dur = dt.get("duration_minutes", 90)
+                timing_rows_html += f"<div style='margin-bottom: 4px;'><strong>{d_name}:</strong> {st_fmt} – {et_fmt} <span style='color: #64748b;'>({dur} mins)</span></div>"
+                timing_rows_text += f"- {d_name}: {st_fmt} – {et_fmt} ({dur} mins)\n"
+        else:
+            st = schedule.start_time.strftime("%I:%M %p").lstrip("0") if schedule.start_time else "10:30 AM"
+            et = schedule.end_time.strftime("%I:%M %p").lstrip("0") if schedule.end_time else "12:00 PM"
+            dur = schedule.duration_minutes or 90
+            timing_rows_html = f"<div><strong>{formatted_days}:</strong> {st} – {et} <span style='color: #64748b;'>({dur} mins)</span></div>"
+            timing_rows_text = f"- {formatted_days}: {st} – {et} ({dur} mins)\n"
+
+        mode_display = schedule.get_mode_display() if hasattr(schedule, "get_mode_display") else (schedule.mode or "Physical")
+        venue_display = schedule.venue_or_link or "Stephotec Classroom / Assigned Hall"
+        instructor_display = schedule.instructor_name or "Stephotec Instructor"
+        notes_display = custom_note or schedule.notes or ""
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {{ font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 24px 12px; color: #1e293b; }}
+            .container {{ max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 36px 32px; border: 1px solid #e2e8f0; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.06); }}
+            .header {{ text-align: center; padding-bottom: 20px; border-bottom: 2px solid #2563eb; }}
+            .brand {{ font-size: 24px; font-weight: 900; color: #0f172a; letter-spacing: 0.5px; }}
+            .subbrand {{ font-size: 11px; font-weight: 700; color: #2563eb; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 3px; }}
+            .badge {{ display: inline-block; background-color: {badge_bg}; color: {badge_color}; font-size: 12px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 16px; }}
+            .content {{ padding: 24px 0 12px 0; font-size: 15px; line-height: 1.6; color: #334155; }}
+            .schedule-card {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin: 20px 0; }}
+            .row {{ display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; }}
+            .row:last-child {{ margin-bottom: 0; }}
+            .label {{ font-weight: 700; color: #64748b; font-size: 12px; text-transform: uppercase; }}
+            .val {{ font-weight: 700; color: #0f172a; text-align: right; }}
+            .timing-box {{ background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-top: 12px; font-size: 13px; }}
+            .note-box {{ background: #eff6ff; border-left: 4px solid #2563eb; border-radius: 6px; padding: 12px 16px; margin: 18px 0; font-size: 14px; color: #1e40af; }}
+            .btn-wrap {{ text-align: center; margin: 26px 0 16px 0; }}
+            .btn {{ display: inline-block; background-color: #2563eb; color: #ffffff !important; padding: 14px 32px; border-radius: 10px; font-weight: 800; text-decoration: none; font-size: 14px; letter-spacing: 0.3px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25); }}
+            .footer {{ border-top: 1px solid #f1f5f9; padding-top: 20px; margin-top: 24px; font-size: 12px; color: #94a3b8; text-align: center; line-height: 1.6; }}
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="brand">STEPHOTEC</div>
+              <div class="subbrand">Computer Technologies Ltd · Lecture Schedule</div>
+            </div>
+            
+            <div style="text-align: center;">
+              <span class="badge">{badge_text}</span>
+            </div>
+
+            <div class="content">
+              <p style="font-size: 16px;">Hello <strong>{full_name}</strong>,</p>
+              <p>{intro_msg}</p>
+
+              <div class="schedule-card">
+                <div style="font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 6px;">{title}</div>
+                <div style="font-size: 13px; font-weight: 700; color: #2563eb; margin-bottom: 14px;">Course: {course_name}</div>
+                
+                <div style="font-size: 12px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">Class Schedule Timings:</div>
+                <div class="timing-box">
+                  {timing_rows_html}
+                </div>
+
+                <div style="margin-top: 14px; font-size: 13px; color: #334155;">
+                  <div style="margin-bottom: 6px;"><strong>Class Mode:</strong> {mode_display}</div>
+                  <div style="margin-bottom: 6px;"><strong>Venue / Link:</strong> <span style="font-family: monospace; color: #0f172a;">{venue_display}</span></div>
+                  <div><strong>Instructor:</strong> {instructor_display}</div>
+                </div>
+              </div>
+
+              {f'<div class="note-box"><strong>Notice from Instructor / Admin:</strong><br/>{notes_display}</div>' if notes_display else ''}
+
+              <div class="btn-wrap">
+                <a href="{schedule_url}" class="btn" target="_blank">View My Weekly Timetable</a>
+              </div>
+            </div>
+
+            <div class="footer">
+              <p><strong>Stephotec Computer Technologies Ltd</strong><br/>
+              info@stephotec.com | +234 802 250 8370<br/>
+              Access your full student portal at <a href="{frontend_url}" style="color: #2563eb;">{frontend_url}</a></p>
+            </div>
+          </div>
+        </body>
+        </html>
+        """
+
+        text_content = f"""Hello {full_name},
+
+{subject}
+
+Class: {title}
+Course: {course_name}
+Mode: {mode_display}
+Venue / Link: {venue_display}
+Instructor: {instructor_display}
+
+SCHEDULE TIMINGS:
+{timing_rows_text}
+
+{f"NOTICE: {notes_display}" if notes_display else ""}
+
+View your complete timetable at: {schedule_url}
+
+Stephotec Computer Technologies Ltd
+info@stephotec.com | +234 802 250 8370
+"""
+        return cls._send_email(student.email, subject, html_content, text_content=text_content)

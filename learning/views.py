@@ -11,10 +11,12 @@ from django.contrib.auth import get_user_model
 from accounts.services import FileUploadService
 from notifications.models import AdminAlert
 from notifications.services import (
+    is_email_enabled,
     send_student_notification,
     send_bulk_student_notifications,
     notify_admins,
 )
+from notifications.email_service import EmailService
 from .models import (
     LearningContent,
     Assignment,
@@ -1750,8 +1752,70 @@ class ClassMaterialViewSet(viewsets.ModelViewSet):
         return Response({"detail": "Class material deleted successfully"}, status=status.HTTP_200_OK)
 
 
+def dispatch_lecture_schedule_notifications(schedule, custom_note=None, action_type="SCHEDULED", specific_student_ids=None, created_by=None):
+    """
+    Dispatches in-app notifications and branded emails to students assigned to a lecture schedule.
+    """
+    student_ids = set()
+
+    if specific_student_ids and len(specific_student_ids) > 0:
+        for sid in specific_student_ids:
+            try:
+                student_ids.add(int(sid))
+            except (ValueError, TypeError):
+                pass
+    else:
+        has_direct = schedule.assigned_students.exists()
+        has_groups = schedule.assigned_groups.exists()
+
+        for s in schedule.assigned_students.all():
+            student_ids.add(s.id)
+
+        for g in schedule.assigned_groups.all():
+            for m in g.members.all():
+                student_ids.add(m.id)
+
+        if not has_direct and not has_groups and schedule.course:
+            for sc in schedule.course.students.all():
+                if sc.student_id:
+                    student_ids.add(sc.student_id)
+
+    if not student_ids:
+        return 0
+
+    students = User.objects.filter(id__in=student_ids, role=User.Role.STUDENT, is_deleted=False)
+    sent_count = 0
+
+    action_label = "New Class Scheduled" if action_type == "SCHEDULED" else ("Timetable Update" if action_type == "UPDATED" else "Class Reminder")
+    msg = f"{action_label}: '{schedule.title}' ({', '.join(schedule.days_of_week) if schedule.days_of_week else 'Scheduled Days'})."
+    if custom_note:
+        msg += f" Note: {custom_note}"
+
+    for student in students:
+        try:
+            send_student_notification(
+                student=student,
+                title=f"{action_label}: {schedule.title}",
+                message=msg,
+                notification_type="INFO",
+                created_by=created_by or schedule.created_by,
+                event_key="email_lecture_schedule",
+            )
+            if is_email_enabled("email_lecture_schedule"):
+                EmailService.send_lecture_schedule_email(
+                    student=student,
+                    schedule=schedule,
+                    custom_note=custom_note,
+                    action_type=action_type,
+                )
+            sent_count += 1
+        except Exception as e:
+            print(f"[LECTURE SCHEDULE NOTIFICATION ERROR] {e}", flush=True)
+
+    return sent_count
+
+
 class LectureScheduleViewSet(viewsets.ModelViewSet):
-    """Admin CRUD for lecture timetable and student-facing timetable with next-class alerts."""
     serializer_class = LectureScheduleSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
@@ -1764,22 +1828,13 @@ class LectureScheduleViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = LectureSchedule.objects.select_related("course", "created_by").prefetch_related(
-            "assigned_groups",
+            "assigned_groups__members",
             "assigned_students",
-            "course__students",
+            "course__students"
         )
-
-        day_param = self.request.query_params.get("day")
-        if day_param:
-            qs = qs.filter(days_of_week__contains=[day_param.upper()])
-
         if user.role == "ADMIN":
-            return qs.distinct()
+            return qs
 
-        # For STUDENT: return ONLY schedules targeted to this student:
-        # 1. Directly assigned to this student, OR
-        # 2. Assigned to a group this student belongs to, OR
-        # 3. Assigned to the course generally (only if no specific groups and no specific students were selected)
         student_group_ids = user.student_groups.values_list("id", flat=True)
         student_course_ids = user.courses.values_list("course_id", flat=True)
 
@@ -1802,17 +1857,56 @@ class LectureScheduleViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if request.user.role != "ADMIN":
             return Response({"detail": "Only admins can create lecture schedules."}, status=status.HTTP_403_FORBIDDEN)
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        if request.data.get("send_email"):
+            try:
+                schedule = LectureSchedule.objects.get(id=response.data.get("id"))
+                sent_count = dispatch_lecture_schedule_notifications(
+                    schedule=schedule,
+                    custom_note=request.data.get("custom_note") or request.data.get("notes"),
+                    action_type="SCHEDULED",
+                    created_by=request.user,
+                )
+                response.data["emails_sent"] = sent_count
+            except Exception as e:
+                print(f"[SCHEDULE CREATE EMAIL ERROR] {e}", flush=True)
+        return response
 
     def update(self, request, *args, **kwargs):
         if request.user.role != "ADMIN":
             return Response({"detail": "Only admins can update lecture schedules."}, status=status.HTTP_403_FORBIDDEN)
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        if request.data.get("send_email"):
+            try:
+                schedule = self.get_object()
+                sent_count = dispatch_lecture_schedule_notifications(
+                    schedule=schedule,
+                    custom_note=request.data.get("custom_note") or request.data.get("notes"),
+                    action_type="UPDATED",
+                    created_by=request.user,
+                )
+                response.data["emails_sent"] = sent_count
+            except Exception as e:
+                print(f"[SCHEDULE UPDATE EMAIL ERROR] {e}", flush=True)
+        return response
 
     def partial_update(self, request, *args, **kwargs):
         if request.user.role != "ADMIN":
             return Response({"detail": "Only admins can update lecture schedules."}, status=status.HTTP_403_FORBIDDEN)
-        return super().partial_update(request, *args, **kwargs)
+        response = super().partial_update(request, *args, **kwargs)
+        if request.data.get("send_email"):
+            try:
+                schedule = self.get_object()
+                sent_count = dispatch_lecture_schedule_notifications(
+                    schedule=schedule,
+                    custom_note=request.data.get("custom_note") or request.data.get("notes"),
+                    action_type="UPDATED",
+                    created_by=request.user,
+                )
+                response.data["emails_sent"] = sent_count
+            except Exception as e:
+                print(f"[SCHEDULE PARTIAL_UPDATE EMAIL ERROR] {e}", flush=True)
+        return response
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role != "ADMIN":
@@ -1827,9 +1921,66 @@ class LectureScheduleViewSet(viewsets.ModelViewSet):
         count, _ = LectureSchedule.objects.filter(id__in=ids).delete()
         return Response({"detail": f"{count} lecture schedule(s) deleted."}, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=["post"], permission_classes=[IsAdminUserRole], url_path="send-reminder")
+    def send_reminder(self, request):
+        """
+        Broadcasts on-demand lecture schedule reminder emails and in-app notifications.
+        Accepts:
+          - schedule_id (optional): ID of specific schedule
+          - group_id (optional): ID of specific group
+          - student_ids (optional): list of student IDs
+          - course_id (optional): ID of course
+          - custom_note (optional): text message from admin
+        """
+        schedule_id = request.data.get("schedule_id")
+        group_id = request.data.get("group_id")
+        student_ids = request.data.get("student_ids") or []
+        course_id = request.data.get("course_id")
+        custom_note = request.data.get("custom_note", "").strip()
+
+        target_schedules = []
+        if schedule_id:
+            sched = LectureSchedule.objects.filter(id=schedule_id, is_active=True).first()
+            if sched:
+                target_schedules.append(sched)
+        elif group_id:
+            target_schedules = list(LectureSchedule.objects.filter(assigned_groups__id=group_id, is_active=True).distinct())
+        elif course_id:
+            target_schedules = list(LectureSchedule.objects.filter(course_id=course_id, is_active=True).distinct())
+        else:
+            target_schedules = list(LectureSchedule.objects.filter(is_active=True))
+
+        if not target_schedules:
+            return Response({"detail": "No active lecture schedule found for the selected target."}, status=status.HTTP_404_NOT_FOUND)
+
+        total_sent = 0
+        for sched in target_schedules:
+            target_student_ids = None
+            if student_ids and len(student_ids) > 0:
+                target_student_ids = student_ids
+            elif group_id:
+                from accounts.models import StudentGroup
+                grp = StudentGroup.objects.filter(id=group_id).first()
+                if grp:
+                    target_student_ids = list(grp.members.values_list("id", flat=True))
+
+            sent = dispatch_lecture_schedule_notifications(
+                schedule=sched,
+                custom_note=custom_note,
+                action_type="REMINDER",
+                specific_student_ids=target_student_ids,
+                created_by=request.user,
+            )
+            total_sent += sent
+
+        return Response({
+            "message": f"Successfully dispatched lecture reminders to {total_sent} student(s).",
+            "sent_count": total_sent,
+        }, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=["get"], url_path="next-class")
     def next_class(self, request):
-        """Computes and returns the logged-in student's next upcoming lecture with per-day timing"""
+        """Computes and returns the logged-in student's next upcoming or live in-progress lecture with per-day timing"""
         schedules = self.get_queryset()
         if not schedules.exists():
             return Response({"next_class": None})
@@ -1845,6 +1996,7 @@ class LectureScheduleViewSet(viewsets.ModelViewSet):
         best_class_date = None
         best_start_time_str = None
         best_end_time_str = None
+        best_is_live = False
 
         for sched in schedules:
             # Check day_times entries or fallback to days_of_week
@@ -1867,17 +2019,41 @@ class LectureScheduleViewSet(viewsets.ModelViewSet):
                 elif hasattr(st_val, "hour"):
                     start_t = st_val
                 else:
-                    start_t = sched.start_time
+                    start_t = sched.start_time or timezone.datetime.min.time().replace(hour=10, minute=30)
+
+                et_val = entry.get("end_time")
+                if isinstance(et_val, str):
+                    et_parts = [int(p) for p in et_val.split(":")[:2]]
+                    end_t = timezone.datetime.min.time().replace(hour=et_parts[0], minute=et_parts[1])
+                elif hasattr(et_val, "hour"):
+                    end_t = et_val
+                else:
+                    end_t = sched.end_time or timezone.datetime.min.time().replace(hour=12, minute=0)
 
                 days_ahead = (day_idx - current_day_index) % 7
-                if days_ahead == 0 and start_t < current_time:
-                    days_ahead = 7
+                is_live = False
+
+                if days_ahead == 0:
+                    if current_time >= end_t:
+                        # Lecture has already ended for today -> shifts to next week!
+                        days_ahead = 7
+                    elif current_time >= start_t and current_time < end_t:
+                        # Lecture is IN PROGRESS right now!
+                        is_live = True
+                        days_ahead = 0
 
                 target_date = (now + timezone.timedelta(days=days_ahead)).date()
                 class_datetime = timezone.make_aware(
                     timezone.datetime.combine(target_date, start_t)
                 )
-                diff = (class_datetime - now).total_seconds()
+
+                if is_live:
+                    diff = 0
+                else:
+                    diff = (class_datetime - now).total_seconds()
+                    if diff < 0:
+                        diff += 7 * 86400
+
                 if best_diff_seconds is None or diff < best_diff_seconds:
                     best_diff_seconds = diff
                     best_schedule = sched
@@ -1885,6 +2061,7 @@ class LectureScheduleViewSet(viewsets.ModelViewSet):
                     best_class_date = class_datetime
                     best_start_time_str = entry.get("start_time", sched.start_time.strftime("%H:%M:%S") if sched.start_time else "")
                     best_end_time_str = entry.get("end_time", sched.end_time.strftime("%H:%M:%S") if sched.end_time else "")
+                    best_is_live = is_live
 
         if not best_schedule:
             return Response({"next_class": None})
@@ -1900,6 +2077,7 @@ class LectureScheduleViewSet(viewsets.ModelViewSet):
             "datetime": best_class_date.isoformat() if best_class_date else None,
             "seconds_remaining": max(0, int(best_diff_seconds)) if best_diff_seconds is not None else 0,
             "is_today": best_class_date.date() == now.date() if best_class_date else False,
+            "is_live": best_is_live,
         }
         return Response({"next_class": data})
 

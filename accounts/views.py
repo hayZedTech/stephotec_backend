@@ -852,6 +852,7 @@ class AdminSettingsView(APIView):
             "email_new_assignment": True,
             "email_assignment_grading": True,
             "email_attendance": False,
+            "email_lecture_schedule": True,
             "email_quiz_results": True,
             "email_certificate": True,
             "email_payment_receipt": True,
