@@ -675,6 +675,14 @@ class StudentGroupSerializer(serializers.ModelSerializer):
     def get_member_count(self, obj):
         return obj.members.count()
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        count = data.get("member_count", 0)
+        data["members_count"] = count
+        if "members_detail" in data:
+            data["members"] = [m["id"] for m in data.get("members_detail", [])]
+        return data
+
     def get_courses_detail(self, obj):
         try:
             courses_list = list(obj.courses.all())
