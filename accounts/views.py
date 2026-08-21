@@ -185,17 +185,21 @@ class AdminStudentManagementViewSet(
             notification_type="SUCCESS",
             created_by=request.user,
         )
+        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+        activation_url = f"{frontend_url}/activate-profile?username={student.username}&email={student.email or ''}"
+        email_dispatched = False
         if student.email and temporary_password and is_email_enabled("email_welcome"):
             try:
-                frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
-                activation_url = f"{frontend_url}/activate-profile"
                 EmailService.send_welcome_account_email(student, temporary_password, activation_url)
-            except Exception:
-                pass
+                email_dispatched = True
+            except Exception as e:
+                print(f"[STUDENT CREATION EMAIL ERROR] {e}", flush=True)
 
         resp_data = self.get_serializer(student).data
         resp_data["message"] = "Student account provisioned successfully."
         resp_data["temporary_password"] = temporary_password
+        resp_data["activation_url"] = activation_url
+        resp_data["email_sent"] = email_dispatched
         resp_data["student_details"] = self.get_serializer(student).data
         return Response(resp_data, status=status.HTTP_201_CREATED)
 

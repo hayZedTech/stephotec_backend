@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -96,13 +97,31 @@ class EmailService:
             print(f"[EMAIL FAILED] Failed to send email to {to_email}: {repr(e)}", flush=True)
 
     @classmethod
-    def _send_email(cls, to_email, subject, html_content, async_send=True):
+    def _clean_plain_text(cls, html_content):
+        # Remove <style> and <script> contents entirely so CSS does not leak into plain text
+        clean = re.sub(r'<(style|script)[^>]*>[\s\S]*?</\1>', '', html_content, flags=re.IGNORECASE)
+        # Convert break and paragraph tags to newlines
+        clean = re.sub(r'<br\s*/?>', '\n', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'</p>', '\n\n', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'</div>', '\n', clean, flags=re.IGNORECASE)
+        # Strip remaining tags
+        clean = strip_tags(clean)
+        # Normalize whitespace and excessive blank lines
+        clean = re.sub(r'[ \t]+', ' ', clean)
+        clean = re.sub(r'\n\s*\n\s*\n+', '\n\n', clean)
+        return clean.strip()
+
+    @classmethod
+    def _send_email(cls, to_email, subject, html_content, text_content=None, async_send=True):
         if not to_email:
             logger.warning("No recipient email provided for EmailService.")
             return False
 
-        text_content = strip_tags(html_content)
+        if not text_content:
+            text_content = cls._clean_plain_text(html_content)
+
         from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "Stephotec Computer Technologies Ltd <info@stephotec.com>")
+        reply_to_email = getattr(settings, "EMAIL_HOST_USER", None) or "info@stephotec.com"
 
         try:
             msg = EmailMultiAlternatives(
@@ -110,6 +129,11 @@ class EmailService:
                 body=text_content,
                 from_email=from_email,
                 to=[to_email],
+                reply_to=[reply_to_email],
+                headers={
+                    "Auto-Submitted": "auto-generated",
+                    "X-Auto-Response-Suppress": "All",
+                }
             )
             msg.attach_alternative(html_content, "text/html")
 
@@ -181,51 +205,103 @@ class EmailService:
 
     @classmethod
     def send_welcome_account_email(cls, user, temp_password, activation_url):
-        subject = "Welcome to Stephotec Computer Technologies Ltd — Student Portal Account"
+        subject = "Welcome to Stephotec — Your Student Portal Account & Activation Link"
         full_name = user.get_full_name() or user.username
+        frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+        login_url = f"{frontend_url}/login"
 
         html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>
-            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }}
-            .container {{ max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 32px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }}
+            body {{ font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 24px 12px; color: #1e293b; }}
+            .container {{ max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 36px 32px; border: 1px solid #e2e8f0; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.06); }}
             .header {{ text-align: center; padding-bottom: 24px; border-bottom: 2px solid #2563eb; }}
-            .brand {{ font-size: 22px; font-weight: 800; color: #0f172a; }}
-            .subbrand {{ font-size: 11px; font-weight: 700; color: #2563eb; letter-spacing: 1px; }}
-            .cred-box {{ background: #f1f5f9; border-radius: 8px; padding: 16px; margin: 20px 0; font-family: monospace; font-size: 14px; border: 1px solid #cbd5e1; }}
-            .btn {{ display: inline-block; background-color: #2563eb; color: #ffffff !important; padding: 14px 32px; border-radius: 8px; font-weight: 700; text-decoration: none; margin: 16px 0; text-align: center; }}
-            .footer {{ border-top: 1px solid #f1f5f9; padding-top: 20px; font-size: 12px; color: #64748b; text-align: center; }}
+            .brand {{ font-size: 24px; font-weight: 900; color: #0f172a; letter-spacing: 0.5px; }}
+            .subbrand {{ font-size: 11px; font-weight: 700; color: #2563eb; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 3px; }}
+            .content {{ padding: 28px 0 16px 0; font-size: 15px; line-height: 1.6; color: #334155; }}
+            .cred-card {{ background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px; padding: 20px; margin: 24px 0; }}
+            .cred-row {{ margin-bottom: 12px; }}
+            .cred-row:last-child {{ margin-bottom: 0; }}
+            .cred-label {{ font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px; }}
+            .cred-val {{ font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 16px; font-weight: 700; color: #0f172a; background: #ffffff; padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0; display: inline-block; }}
+            .btn-wrap {{ text-align: center; margin: 28px 0 20px 0; }}
+            .btn {{ display: inline-block; background-color: #2563eb; color: #ffffff !important; padding: 15px 36px; border-radius: 10px; font-weight: 800; text-decoration: none; font-size: 15px; letter-spacing: 0.3px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }}
+            .fallback-box {{ background-color: #f8fafc; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-size: 13px; color: #475569; border-left: 4px solid #3b82f6; }}
+            .footer {{ border-top: 1px solid #f1f5f9; padding-top: 24px; margin-top: 24px; font-size: 12px; color: #94a3b8; text-align: center; line-height: 1.6; }}
           </style>
         </head>
         <body>
           <div class="container">
             <div class="header">
               <div class="brand">STEPHOTEC</div>
-              <div class="subbrand">COMPUTER TECHNOLOGIES LTD</div>
+              <div class="subbrand">Computer Technologies Ltd · Student Portal</div>
             </div>
             <div class="content">
-              <p>Welcome <strong>{full_name}</strong>,</p>
-              <p>Your official student account has been created on the Stephotec Portal. Below are your login credentials:</p>
-              <div class="cred-box">
-                <strong>Student ID / Username:</strong> {user.username}<br/>
-                <strong>Temporary Password:</strong> {temp_password}
+              <p style="font-size: 16px;">Hello <strong>{full_name}</strong>,</p>
+              <p>Welcome to Stephotec! Your official student account has been successfully created on our student learning portal. Here are your access credentials:</p>
+              
+              <div class="cred-card">
+                <div class="cred-row">
+                  <span class="cred-label">Student ID / Username</span>
+                  <span class="cred-val">{user.username}</span>
+                </div>
+                <div class="cred-row" style="margin-top: 14px;">
+                  <span class="cred-label">Temporary Password</span>
+                  <span class="cred-val" style="color: #d97706;">{temp_password}</span>
+                </div>
               </div>
-              <p>Please click the link below to activate your profile and change your temporary password:</p>
-              <div style="text-align: center;">
-                <a href="{activation_url}" class="btn" target="_blank">Activate Your Profile</a>
+
+              <p>Please click the button below to activate your student profile and set your personal permanent password:</p>
+              
+              <div class="btn-wrap">
+                <a href="{activation_url}" class="btn" target="_blank">Activate Your Profile Now</a>
               </div>
+
+              <div class="fallback-box">
+                <strong>Alternative Manual Login:</strong><br/>
+                If you prefer or if the button doesn't open, visit our portal at <a href="{login_url}" style="color: #2563eb; font-weight: 700;">{login_url}</a>, log in using your <strong>Student ID</strong> and <strong>Temporary Password</strong>, and you will be guided to complete your profile activation.
+              </div>
+
+              <p style="font-size: 12px; color: #64748b; word-break: break-all; margin-top: 20px;">
+                Direct activation link: <a href="{activation_url}" style="color: #2563eb;">{activation_url}</a>
+              </p>
             </div>
+            
             <div class="footer">
-              <p><strong>Stephotec Computer Technologies Ltd</strong><br/>info@stephotec.com | +234 802 250 8370</p>
+              <p><strong>Stephotec Computer Technologies Ltd</strong><br/>
+              Empowering Tech Leaders · info@stephotec.com · +234 802 250 8370<br/>
+              This is an automated notification. Please do not reply directly to this email.</p>
             </div>
           </div>
         </body>
         </html>
         """
-        return cls._send_email(user.email, subject, html_content)
+
+        text_content = f"""Hello {full_name},
+
+Welcome to Stephotec Computer Technologies Ltd! Your official student account has been created on the student portal.
+
+YOUR ACCESS CREDENTIALS:
+- Student ID / Username: {user.username}
+- Temporary Password: {temp_password}
+
+ACTIVATE YOUR PROFILE:
+Please click the link below to activate your account and choose your permanent password:
+{activation_url}
+
+ALTERNATIVE MANUAL LOGIN:
+You can also visit {login_url} and sign in using your Student ID ({user.username}) and Temporary Password.
+
+Best regards,
+Stephotec Computer Technologies Ltd
+Empowering Tech Leaders
+info@stephotec.com | +234 802 250 8370
+"""
+        return cls._send_email(user.email, subject, html_content, text_content=text_content)
 
     @classmethod
     def send_notification_email(cls, user, title, message):
