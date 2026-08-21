@@ -35,6 +35,7 @@ from .models import (
     QuestionOption,
     QuizAttempt,
     ClassMaterial,
+    LectureSchedule,
 )
 from .serializers import (
     LearningContentSerializer,
@@ -57,6 +58,7 @@ from .serializers import (
     QuestionOptionSerializer,
     QuizAttemptSerializer,
     ClassMaterialSerializer,
+    LectureScheduleSerializer,
 )
 from accounts.permissions import IsAdminUserRole
 from accounts.models import StudentCourse, StudentGroup
@@ -1746,6 +1748,189 @@ class ClassMaterialViewSet(viewsets.ModelViewSet):
         instance.is_deleted = True
         instance.save()
         return Response({"detail": "Class material deleted successfully"}, status=status.HTTP_200_OK)
+
+
+class LectureScheduleViewSet(viewsets.ModelViewSet):
+    """Admin CRUD for lecture timetable and student-facing timetable with next-class alerts."""
+    serializer_class = LectureScheduleSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["course", "mode", "is_active"]
+    search_fields = ["title", "instructor_name", "venue_or_link", "notes"]
+    ordering_fields = ["start_time", "created_at"]
+    ordering = ["start_time", "created_at"]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = LectureSchedule.objects.select_related("course", "created_by").prefetch_related(
+            "assigned_groups",
+            "assigned_students",
+            "course__students",
+        )
+
+        day_param = self.request.query_params.get("day")
+        if day_param:
+            qs = qs.filter(days_of_week__contains=[day_param.upper()])
+
+        if user.role == "ADMIN":
+            return qs.distinct()
+
+        # For STUDENT: return ONLY schedules targeted to this student:
+        # 1. Directly assigned to this student, OR
+        # 2. Assigned to a group this student belongs to, OR
+        # 3. Assigned to the course generally (only if no specific groups and no specific students were selected)
+        student_group_ids = user.student_groups.values_list("id", flat=True)
+        student_course_ids = user.courses.values_list("course_id", flat=True)
+
+        q_direct = models.Q(assigned_students=user)
+        q_group = models.Q(assigned_groups__id__in=student_group_ids)
+        q_course_general = models.Q(
+            course_id__in=student_course_ids,
+            assigned_groups__isnull=True,
+            assigned_students__isnull=True,
+        )
+
+        return qs.filter(
+            q_direct | q_group | q_course_general,
+            is_active=True
+        ).distinct()
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can create lecture schedules."}, status=status.HTTP_403_FORBIDDEN)
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can update lecture schedules."}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can update lecture schedules."}, status=status.HTTP_403_FORBIDDEN)
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != "ADMIN":
+            return Response({"detail": "Only admins can delete lecture schedules."}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["post"], permission_classes=[IsAdminUserRole], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        ids = request.data.get("ids", [])
+        if not ids:
+            return Response({"detail": "ids list is required."}, status=status.HTTP_400_BAD_REQUEST)
+        count, _ = LectureSchedule.objects.filter(id__in=ids).delete()
+        return Response({"detail": f"{count} lecture schedule(s) deleted."}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="next-class")
+    def next_class(self, request):
+        """Computes and returns the logged-in student's next upcoming lecture with per-day timing"""
+        schedules = self.get_queryset()
+        if not schedules.exists():
+            return Response({"next_class": None})
+
+        now = timezone.localtime(timezone.now())
+        current_day_index = now.weekday()  # Monday is 0, Sunday is 6
+        current_time = now.time()
+        DAYS_MAP = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
+
+        best_diff_seconds = None
+        best_schedule = None
+        best_day_name = None
+        best_class_date = None
+        best_start_time_str = None
+        best_end_time_str = None
+
+        for sched in schedules:
+            # Check day_times entries or fallback to days_of_week
+            day_entries = []
+            if sched.day_times and isinstance(sched.day_times, list) and len(sched.day_times) > 0:
+                day_entries = sched.day_times
+            else:
+                day_entries = [{"day": d, "start_time": sched.start_time.strftime("%H:%M:%S") if sched.start_time else "10:30:00", "end_time": sched.end_time.strftime("%H:%M:%S") if sched.end_time else "12:00:00"} for d in (sched.days_of_week or [])]
+
+            for entry in day_entries:
+                day_upper = str(entry.get("day", "")).upper()
+                if day_upper not in DAYS_MAP:
+                    continue
+                day_idx = DAYS_MAP.index(day_upper)
+
+                st_val = entry.get("start_time")
+                if isinstance(st_val, str):
+                    st_parts = [int(p) for p in st_val.split(":")[:2]]
+                    start_t = timezone.datetime.min.time().replace(hour=st_parts[0], minute=st_parts[1])
+                elif hasattr(st_val, "hour"):
+                    start_t = st_val
+                else:
+                    start_t = sched.start_time
+
+                days_ahead = (day_idx - current_day_index) % 7
+                if days_ahead == 0 and start_t < current_time:
+                    days_ahead = 7
+
+                target_date = (now + timezone.timedelta(days=days_ahead)).date()
+                class_datetime = timezone.make_aware(
+                    timezone.datetime.combine(target_date, start_t)
+                )
+                diff = (class_datetime - now).total_seconds()
+                if best_diff_seconds is None or diff < best_diff_seconds:
+                    best_diff_seconds = diff
+                    best_schedule = sched
+                    best_day_name = day_upper
+                    best_class_date = class_datetime
+                    best_start_time_str = entry.get("start_time", sched.start_time.strftime("%H:%M:%S") if sched.start_time else "")
+                    best_end_time_str = entry.get("end_time", sched.end_time.strftime("%H:%M:%S") if sched.end_time else "")
+
+        if not best_schedule:
+            return Response({"next_class": None})
+
+        serializer = self.get_serializer(best_schedule)
+        data = serializer.data
+        if best_start_time_str:
+            data["start_time"] = best_start_time_str
+        if best_end_time_str:
+            data["end_time"] = best_end_time_str
+        data["next_occurrence"] = {
+            "day": best_day_name,
+            "datetime": best_class_date.isoformat() if best_class_date else None,
+            "seconds_remaining": max(0, int(best_diff_seconds)) if best_diff_seconds is not None else 0,
+            "is_today": best_class_date.date() == now.date() if best_class_date else False,
+        }
+        return Response({"next_class": data})
+
+    @action(detail=False, methods=["get"], url_path="today")
+    def today(self, request):
+        """Returns all classes scheduled for today for the user with per-day timing overrides"""
+        now = timezone.localtime(timezone.now())
+        DAYS_MAP = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
+        today_name = DAYS_MAP[now.weekday()]
+
+        schedules = self.get_queryset().filter(
+            models.Q(days_of_week__contains=[today_name]) |
+            models.Q(day_times__contains=[{"day": today_name}])
+        )
+        serializer = self.get_serializer(schedules, many=True)
+        results = []
+        for sched_data in serializer.data:
+            sched_copy = dict(sched_data)
+            # Check if there is specific day_times for today
+            for dt in sched_copy.get("day_times") or []:
+                if str(dt.get("day", "")).upper() == today_name:
+                    if dt.get("start_time"):
+                        sched_copy["start_time"] = dt.get("start_time")
+                    if dt.get("end_time"):
+                        sched_copy["end_time"] = dt.get("end_time")
+                    if dt.get("duration_minutes"):
+                        sched_copy["duration_minutes"] = dt.get("duration_minutes")
+                    break
+            results.append(sched_copy)
+        return Response(results)
+
 
 
 

@@ -638,4 +638,92 @@ class ClassMaterial(models.Model):
         return f"Class Material: {self.title}"
 
 
+class LectureSchedule(models.Model):
+    """Lecture timetable and class schedule for groups and students"""
+    class Mode(models.TextChoices):
+        ONLINE = "ONLINE", "Online (Virtual)"
+        PHYSICAL = "PHYSICAL", "Physical (Classroom)"
+        HYBRID = "HYBRID", "Hybrid"
+
+    title = models.CharField(max_length=255)
+    course = models.ForeignKey(
+        Course,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lecture_schedules"
+    )
+    assigned_groups = models.ManyToManyField(
+        StudentGroup,
+        blank=True,
+        related_name="lecture_schedules"
+    )
+    assigned_students = models.ManyToManyField(
+        User,
+        blank=True,
+        related_name="lecture_schedules",
+        limit_choices_to={"role": "STUDENT"}
+    )
+    days_of_week = models.JSONField(
+        default=list,
+        help_text="List of days of week, e.g. ['MONDAY', 'WEDNESDAY', 'FRIDAY']"
+    )
+    day_times = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of per-day timings: [{'day': 'MONDAY', 'start_time': '10:30:00', 'end_time': '12:00:00', 'duration_minutes': 90}, ...]"
+    )
+    start_time = models.TimeField(help_text="Start time of the lecture (e.g. 10:30)")
+    end_time = models.TimeField(help_text="End time of the lecture (e.g. 12:00)")
+    duration_minutes = models.PositiveIntegerField(
+        default=90,
+        help_text="Class duration in minutes (e.g. 45, 60, 90, 120)"
+    )
+    mode = models.CharField(
+        max_length=20,
+        choices=Mode.choices,
+        default=Mode.PHYSICAL
+    )
+    venue_or_link = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Meeting URL (Google Meet / Zoom) or physical classroom room/hall."
+    )
+    instructor_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Name of the instructor / tutor taking this lecture."
+    )
+    color_tag = models.CharField(
+        max_length=30,
+        default="#2563eb",
+        help_text="Hex color code or theme for timetable card display."
+    )
+    notes = models.TextField(
+        blank=True,
+        help_text="Preparation notes, tools, or syllabus reference for students."
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Enable or disable this lecture schedule."
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_lecture_schedules"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["start_time", "created_at"]
+
+    def __str__(self):
+        days_str = ", ".join(self.days_of_week) if self.days_of_week else "Unscheduled"
+        return f"{self.title} ({days_str} @ {self.start_time.strftime('%I:%M %p') if self.start_time else ''})"
+
+
+
 

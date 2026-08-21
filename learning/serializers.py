@@ -24,6 +24,7 @@ from .models import (
     QuestionOption,
     QuizAttempt,
     ClassMaterial,
+    LectureSchedule,
 )
 
 
@@ -615,5 +616,110 @@ class ClassMaterialSerializer(serializers.ModelSerializer):
             }
             for s in obj.assigned_students.all()
         ]
+
+
+class LectureScheduleSerializer(serializers.ModelSerializer):
+    course_name = serializers.CharField(source="course.name", read_only=True, allow_null=True)
+    course_code = serializers.CharField(source="course.code_prefix", read_only=True, allow_null=True)
+    assigned_group_ids = serializers.PrimaryKeyRelatedField(
+        queryset=StudentGroup.objects.all(),
+        many=True,
+        required=False,
+        source="assigned_groups"
+    )
+    assigned_student_ids = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role="STUDENT"),
+        many=True,
+        required=False,
+        source="assigned_students"
+    )
+    assigned_groups_details = serializers.SerializerMethodField()
+    assigned_students_details = serializers.SerializerMethodField()
+    formatted_time = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, allow_null=True)
+
+    class Meta:
+        model = LectureSchedule
+        fields = [
+            "id",
+            "title",
+            "course",
+            "course_name",
+            "course_code",
+            "assigned_group_ids",
+            "assigned_groups_details",
+            "assigned_student_ids",
+            "assigned_students_details",
+            "days_of_week",
+            "day_times",
+            "start_time",
+            "end_time",
+            "duration_minutes",
+            "formatted_time",
+            "mode",
+            "venue_or_link",
+            "instructor_name",
+            "color_tag",
+            "notes",
+            "is_active",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "created_by",
+            "created_at",
+            "updated_at",
+            "formatted_time",
+            "assigned_groups_details",
+            "assigned_students_details",
+        ]
+
+    def get_assigned_groups_details(self, obj):
+        return [{"id": g.id, "name": g.name} for g in obj.assigned_groups.all()]
+
+    def get_assigned_students_details(self, obj):
+        return [
+            {
+                "id": s.id,
+                "username": s.username,
+                "full_name": s.get_full_name() or s.username,
+                "email": s.email,
+            }
+            for s in obj.assigned_students.all()
+        ]
+
+    def get_formatted_time(self, obj):
+        if not obj.start_time or not obj.end_time:
+            return ""
+        s_str = obj.start_time.strftime("%I:%M %p").lstrip("0")
+        e_str = obj.end_time.strftime("%I:%M %p").lstrip("0")
+        return f"{s_str} - {e_str}"
+
+    def create(self, validated_data):
+        assigned_groups = validated_data.pop("assigned_groups", [])
+        assigned_students = validated_data.pop("assigned_students", [])
+        instance = LectureSchedule.objects.create(**validated_data)
+        if assigned_groups:
+            instance.assigned_groups.set(assigned_groups)
+        if assigned_students:
+            instance.assigned_students.set(assigned_students)
+        return instance
+
+    def update(self, instance, validated_data):
+        assigned_groups = validated_data.pop("assigned_groups", None)
+        assigned_students = validated_data.pop("assigned_students", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if assigned_groups is not None:
+            instance.assigned_groups.set(assigned_groups)
+        if assigned_students is not None:
+            instance.assigned_students.set(assigned_students)
+        return instance
+
+
 
 
