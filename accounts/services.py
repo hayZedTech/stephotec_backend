@@ -1,6 +1,6 @@
 import cloudinary
 import cloudinary.uploader
-from django.core.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError
 
 
 class FileUploadService:
@@ -19,6 +19,9 @@ class FileUploadService:
         'submission': 20 * 1024 * 1024,
     }
     
+    IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'bmp', 'ico', 'tif', 'tiff'}
+    VIDEO_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv', 'webm', 'mp3', 'wav', 'm4a', 'aac', 'ogg'}
+
     ALLOWED_EXTENSIONS = {
         'profile_picture': {'jpg', 'jpeg', 'png', 'webp'},
         'course_thumbnail': {'jpg', 'jpeg', 'png', 'webp'},
@@ -31,6 +34,23 @@ class FileUploadService:
         'assignment': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'zip', 'rar'},
         'submission': {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'zip', 'rar'},
     }
+
+    @staticmethod
+    def _get_resource_type(file):
+        """
+        Determines the correct Cloudinary resource_type:
+        - 'image' for visual images
+        - 'video' for video/audio media
+        - 'raw' for documents, code archives, zip, pdf, text, binaries, etc.
+        """
+        if not file or not hasattr(file, 'name') or not file.name:
+            return 'raw'
+        ext = file.name.split('.')[-1].lower()
+        if ext in FileUploadService.IMAGE_EXTENSIONS:
+            return 'image'
+        if ext in FileUploadService.VIDEO_EXTENSIONS:
+            return 'video'
+        return 'raw'
     
     @staticmethod
     def validate_file(file, file_type):
@@ -61,7 +81,7 @@ class FileUploadService:
                 folder="stephotec/profiles",
                 public_id=f"user_{user_id}",
                 overwrite=True,
-                resource_type="auto",
+                resource_type="image",
                 quality="auto",
                 fetch_format="auto",
             )
@@ -80,7 +100,7 @@ class FileUploadService:
                 folder="stephotec/course-thumbnails",
                 public_id=f"course_{course_id}",
                 overwrite=True,
-                resource_type="auto",
+                resource_type="image",
                 quality="auto",
                 fetch_format="auto",
             )
@@ -97,7 +117,7 @@ class FileUploadService:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/documents/course_{course_id}",
-                resource_type="auto",
+                resource_type=FileUploadService._get_resource_type(file),
             )
             return result['secure_url']
         except Exception as e:
@@ -112,18 +132,11 @@ class FileUploadService:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/projects/course_{course_id}",
-                resource_type="auto",
+                resource_type=FileUploadService._get_resource_type(file),
             )
             return result['secure_url']
         except Exception as e:
             raise ValidationError(f"Upload failed: {str(e)}")
-    
-    @staticmethod
-    def _get_resource_type(file):
-        """Return 'video' for video files, 'raw' for everything else (docs, PDFs)."""
-        video_exts = {'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv'}
-        ext = file.name.split('.')[-1].lower()
-        return 'video' if ext in video_exts else 'raw'
 
     @staticmethod
     def upload_learning_material(file, course_id):
@@ -147,7 +160,7 @@ class FileUploadService:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/submissions/student_{student_id}",
-                resource_type="auto",
+                resource_type=FileUploadService._get_resource_type(file),
             )
             return result['secure_url']
         except Exception as e:
@@ -160,9 +173,9 @@ class FileUploadService:
         try:
             result = cloudinary.uploader.upload(
                 file,
-                folder=f"stephotec/certificates",
+                folder="stephotec/certificates",
                 public_id=f"cert_{cert_id}_{int(__import__('time').time())}",
-                resource_type="auto",
+                resource_type=FileUploadService._get_resource_type(file),
             )
             return result['secure_url']
         except Exception as e:
@@ -176,7 +189,7 @@ class FileUploadService:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/handouts/course_{course_id}",
-                resource_type="auto",
+                resource_type=FileUploadService._get_resource_type(file),
             )
             return result['secure_url']
         except Exception as e:
@@ -190,7 +203,7 @@ class FileUploadService:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/assignments/course_{course_id}",
-                resource_type="auto",
+                resource_type=FileUploadService._get_resource_type(file),
             )
             return result['secure_url']
         except Exception as e:
@@ -204,7 +217,7 @@ class FileUploadService:
             result = cloudinary.uploader.upload(
                 file,
                 folder=f"stephotec/brochures/course_{course_id}",
-                resource_type="auto",
+                resource_type=FileUploadService._get_resource_type(file),
             )
             return result['secure_url']
         except Exception as e:
@@ -214,8 +227,7 @@ class FileUploadService:
     def upload_class_material(file):
         """Upload class file/code archive to Cloudinary (50MB max)"""
         try:
-            ext = file.name.split('.')[-1].lower()
-            res_type = 'video' if ext in {'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv'} else 'auto'
+            res_type = FileUploadService._get_resource_type(file)
             result = cloudinary.uploader.upload(
                 file,
                 folder="stephotec/class-materials",

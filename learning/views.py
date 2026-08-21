@@ -1582,33 +1582,37 @@ class ClassMaterialViewSet(viewsets.ModelViewSet):
         
         uploaded_files_data = []
 
-        if file_objs:
-            for file_obj in file_objs:
-                file_name = file_obj.name
-                size_mb = file_obj.size / (1024 * 1024)
-                file_size = f"{size_mb:.1f} MB" if size_mb >= 1 else f"{file_obj.size / 1024:.0f} KB"
-                file_url = FileUploadService.upload_class_material(file_obj)
-                
+        try:
+            if file_objs:
+                for file_obj in file_objs:
+                    file_name = file_obj.name
+                    size_mb = file_obj.size / (1024 * 1024)
+                    file_size = f"{size_mb:.1f} MB" if size_mb >= 1 else f"{file_obj.size / 1024:.0f} KB"
+                    file_url = FileUploadService.upload_class_material(file_obj)
+                    
+                    if file_url:
+                        uploaded_files_data.append({
+                            "url": file_url,
+                            "name": file_name,
+                            "size": file_size
+                        })
+
+            # For backward compatibility if single file was sent
+            single_file_obj = request.FILES.get("file")
+            if single_file_obj and not file_objs:
+                file_name = single_file_obj.name
+                size_mb = single_file_obj.size / (1024 * 1024)
+                file_size = f"{size_mb:.1f} MB" if size_mb >= 1 else f"{single_file_obj.size / 1024:.0f} KB"
+                file_url = FileUploadService.upload_class_material(single_file_obj)
                 if file_url:
                     uploaded_files_data.append({
                         "url": file_url,
                         "name": file_name,
                         "size": file_size
                     })
-
-        # For backward compatibility if single file was sent
-        single_file_obj = request.FILES.get("file")
-        if single_file_obj and not file_objs:
-            file_name = single_file_obj.name
-            size_mb = single_file_obj.size / (1024 * 1024)
-            file_size = f"{size_mb:.1f} MB" if size_mb >= 1 else f"{single_file_obj.size / 1024:.0f} KB"
-            file_url = FileUploadService.upload_class_material(single_file_obj)
-            if file_url:
-                uploaded_files_data.append({
-                    "url": file_url,
-                    "name": file_name,
-                    "size": file_size
-                })
+        except Exception as e:
+            err_msg = str(e).replace("['", "").replace("']", "").replace("Upload failed: ", "")
+            return Response({"detail": f"File upload failed: {err_msg}"}, status=status.HTTP_400_BAD_REQUEST)
 
         if not uploaded_files_data:
             return Response({"detail": "Please select class files to upload."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1926,29 +1930,42 @@ class LectureScheduleViewSet(viewsets.ModelViewSet):
         """
         Broadcasts on-demand lecture schedule reminder emails and in-app notifications.
         Accepts:
-          - schedule_id (optional): ID of specific schedule
+          - schedule_ids (optional): list of schedule IDs
+          - schedule_id (optional): ID of single schedule
           - group_id (optional): ID of specific group
           - student_ids (optional): list of student IDs
+          - student_id (optional): ID of single student
           - course_id (optional): ID of course
           - custom_note (optional): text message from admin
         """
+        schedule_ids = request.data.get("schedule_ids") or []
         schedule_id = request.data.get("schedule_id")
         group_id = request.data.get("group_id")
         student_ids = request.data.get("student_ids") or []
+        student_id = request.data.get("student_id")
         course_id = request.data.get("course_id")
         custom_note = request.data.get("custom_note", "").strip()
 
+        if schedule_id and schedule_id not in schedule_ids:
+            schedule_ids.append(schedule_id)
+        if student_id and student_id not in student_ids:
+            student_ids.append(student_id)
+
         target_schedules = []
-        if schedule_id:
-            sched = LectureSchedule.objects.filter(id=schedule_id, is_active=True).first()
-            if sched:
-                target_schedules.append(sched)
+        if schedule_ids:
+            target_schedules = list(LectureSchedule.objects.filter(id__in=schedule_ids, is_active=True).distinct())
         elif group_id:
             target_schedules = list(LectureSchedule.objects.filter(assigned_groups__id=group_id, is_active=True).distinct())
+        elif student_ids:
+            target_schedules = list(LectureSchedule.objects.filter(
+                models.Q(assigned_students__id__in=student_ids) |
+                models.Q(assigned_groups__members__id__in=student_ids),
+                is_active=True
+            ).distinct())
         elif course_id:
             target_schedules = list(LectureSchedule.objects.filter(course_id=course_id, is_active=True).distinct())
         else:
-            target_schedules = list(LectureSchedule.objects.filter(is_active=True))
+            return Response({"detail": "Please specify at least one target schedule, group, student, or course."}, status=status.HTTP_400_BAD_REQUEST)
 
         if not target_schedules:
             return Response({"detail": "No active lecture schedule found for the selected target."}, status=status.HTTP_404_NOT_FOUND)
@@ -1956,8 +1973,18 @@ class LectureScheduleViewSet(viewsets.ModelViewSet):
         total_sent = 0
         for sched in target_schedules:
             target_student_ids = None
+
             if student_ids and len(student_ids) > 0:
-                target_student_ids = student_ids
+                # Intersect with students actually belonging to this schedule
+                sched_student_ids = set(sched.assigned_students.values_list("id", flat=True))
+                for g in sched.assigned_groups.all():
+                    sched_student_ids.update(g.members.values_list("id", flat=True))
+                if not sched_student_ids and sched.course:
+                    sched_student_ids.update(sched.course.students.values_list("student_id", flat=True))
+
+                target_student_ids = [sid for sid in student_ids if int(sid) in sched_student_ids]
+                if not target_student_ids:
+                    continue
             elif group_id:
                 from accounts.models import StudentGroup
                 grp = StudentGroup.objects.filter(id=group_id).first()
@@ -1972,6 +1999,9 @@ class LectureScheduleViewSet(viewsets.ModelViewSet):
                 created_by=request.user,
             )
             total_sent += sent
+
+        if total_sent == 0:
+            return Response({"detail": "No matching students were found for the selected schedule(s)."}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({
             "message": f"Successfully dispatched lecture reminders to {total_sent} student(s).",
